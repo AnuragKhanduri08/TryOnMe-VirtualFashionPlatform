@@ -65,9 +65,15 @@ metrics = {
 # Load Data
 def load_data():
     global products, product_embeddings, product_histograms
+    
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    products_path = os.path.join(base_dir, "products.json")
+    embeddings_path = os.path.join(base_dir, "product_embeddings.npy")
+    histograms_path = os.path.join(base_dir, "product_histograms.npy")
+    
     try:
         print("Loading products.json...")
-        with open("backend/products.json", "r") as f:
+        with open(products_path, "r") as f:
             products = json.load(f)
         print(f"Loaded {len(products)} products.")
     except Exception as e:
@@ -75,15 +81,15 @@ def load_data():
         products = []
 
     try:
-        if os.path.exists("backend/product_embeddings.npy"):
+        if os.path.exists(embeddings_path):
             print("Loading product_embeddings.npy...")
-            product_embeddings = np.load("backend/product_embeddings.npy")
+            product_embeddings = np.load(embeddings_path)
             print(f"Loaded embeddings: {product_embeddings.shape}")
         else:
             print("product_embeddings.npy not found.")
             
-        if os.path.exists("backend/product_histograms.npy"):
-            product_histograms = np.load("backend/product_histograms.npy")
+        if os.path.exists(histograms_path):
+            product_histograms = np.load(histograms_path)
             print(f"Loaded histograms: {product_histograms.shape}")
     except Exception as e:
         print(f"Error loading data: {e}")
