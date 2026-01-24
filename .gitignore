@@ -1,0 +1,33 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python specific
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+.env
+
+# Ignore Node/Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+
+# Ignore Large Data Files (Crucial for GitHub limit)
+backend/static/products/
+backend/static/images/
+backend/product_embeddings.npy
+backend/product_histograms.npy
+backend/product_histograms.pkl
+
+# Ignore Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
