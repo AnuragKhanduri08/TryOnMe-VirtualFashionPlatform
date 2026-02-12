@@ -30,21 +30,48 @@ This project aims to build a comprehensive e-commerce platform integrated with a
 - **Frontend:** React.js / Next.js - User Interface.
 - **Database:** JSON (Prototyping), PostgreSQL (Planned).
 
-## How to Run
+## How to Run (Quick Start)
 
-### Option A: One-Click Run (Windows)
+### 1. Environment Setup
+**Before running the project**, you must set up your environment variables:
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+   *(Or manually rename `.env.example` to `.env` in your file explorer)*
+2. (Optional) Edit `.env` to configure your database (defaults to SQLite, so no change needed for quick testing).
+
+### 2. Generate AI Models (Critical Step)
+Since large AI model files are not included in the repository, you **must** generate them locally for search and recommendations to work.
+
+1. Run `run.bat`
+2. Select **Option [6] Setup AI Models**
+3. Wait for the process to complete (it will download the CLIP model and generate embeddings).
+
+### 3. Run the Application
+#### Option A: One-Click Run (Windows)
 Simply double-click the `run.bat` file in the project root folder.
-This will automatically open two terminal windows (one for backend, one for frontend).
+1. Select **Option [2]** to install dependencies (First time only).
+2. Select **Option [1]** to start the project.
 
-### Option B: Using Make (Linux/Mac/WSL)
-If you have `make` installed:
-```bash
-make install       # Install dependencies
-make run-backend   # Run backend
-make run-frontend  # Run frontend (in a new tab)
-```
+### 4. (Optional) Using PostgreSQL
+By default, the app uses a simple SQLite database. If you want to use **PostgreSQL** for better performance:
 
-### Option C: Manual Setup
+1. **Install PostgreSQL** and create a new database (e.g., `virtual_fashion`).
+2. **Configure Environment**:
+   - Rename `.env.example` to `.env`.
+   - Uncomment and update the `DATABASE_URL` line:
+     ```bash
+     DATABASE_URL=postgresql://postgres:password@localhost/virtual_fashion
+     ```
+3. **Migrate Data**:
+   - Run `run.bat`.
+   - Select **Option [7] Migrate Data to Database**.
+   - This will create the tables and import products from `products.json` into your PostgreSQL database.
+4. **Setup AI Models**:
+   - Don't forget to run **Option [6]** again if you switched databases, to ensure embeddings are aligned with the new DB IDs.
+
+#### Option B: Manual Setup (Linux/Mac/Windows)
 
 ### Prerequisites
 - Python 3.8+

@@ -17,6 +17,17 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Res
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
+
+# Load env vars
+load_dotenv()
+
+# Database Imports
+from database import SessionLocal, engine
+from models import Base, Product
+
+# Create tables if not exist (mostly for SQLite fallback, migration script handles this usually)
+Base.metadata.create_all(bind=engine)
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,12 +83,32 @@ def load_data():
     histograms_path = os.path.join(base_dir, "product_histograms.npy")
     
     try:
-        print("Loading products.json...")
-        with open(products_path, "r") as f:
-            products = json.load(f)
-        print(f"Loaded {len(products)} products.")
+        print("Loading products from Database...")
+        db = SessionLocal()
+        try:
+            db_products = db.query(Product).order_by(Product.id).all()
+            products = [p.to_dict() for p in db_products]
+            print(f"Loaded {len(products)} products from DB.")
+            
+            if not products:
+                print("Database is empty. Attempting fallback to products.json...")
+                raise Exception("DB Empty")
+                
+        except Exception as e:
+            print(f"DB Load failed: {e}. Falling back to products.json")
+            # Fallback to JSON if DB fails or empty
+            with open(products_path, "r") as f:
+                products = json.load(f)
+            print(f"Loaded {len(products)} products from JSON.")
+            
+            # Optional: Auto-migrate if empty?
+            # print("Tip: Run migrate_to_db.py to populate the database.")
+            
+        finally:
+            db.close()
+            
     except Exception as e:
-        print(f"Error loading products.json: {e}")
+        print(f"Error loading products: {e}")
         products = []
 
     try:
@@ -162,12 +193,36 @@ async def monitor_requests(request: Request, call_next):
             
         metrics["endpoint_usage"][endpoint] = metrics["endpoint_usage"].get(endpoint, 0) + 1
         
+        # Log success to recent_logs
+        log_entry = {
+            "method": request.method,
+            "path": endpoint,
+            "status": response.status_code,
+            "latency": f"{process_time*1000:.1f}ms",
+            "timestamp": time.time()
+        }
+        metrics["recent_logs"].insert(0, log_entry) # Insert at beginning
+        if len(metrics["recent_logs"]) > 50:
+            metrics["recent_logs"] = metrics["recent_logs"][:50]
+
         return response
     except Exception as e:
+        process_time = time.time() - start_time
         metrics["errors"] += 1
-        metrics["recent_logs"].append(f"Error in {endpoint}: {str(e)}")
+        
+        # Log error to recent_logs
+        log_entry = {
+            "method": request.method,
+            "path": endpoint,
+            "status": 500,
+            "latency": f"{process_time*1000:.1f}ms",
+            "timestamp": time.time(),
+            "error": str(e)
+        }
+        metrics["recent_logs"].insert(0, log_entry)
         if len(metrics["recent_logs"]) > 50:
-             metrics["recent_logs"].pop(0)
+             metrics["recent_logs"] = metrics["recent_logs"][:50]
+             
         raise e
 
 # Static Files
@@ -190,14 +245,64 @@ async def health_check():
     }}
 
 @app.get("/products")
-async def get_products(limit: int = 20):
-    """
-    Get a list of products (default catalog view).
-    """
-    if not products:
-        raise HTTPException(status_code=503, detail="Product data not loaded")
+async def get_products(
+    limit: int = 50, 
+    gender: Optional[str] = None, 
+    category: Optional[str] = None,
+    subCategory: Optional[str] = None,
+    masterCategory: Optional[str] = None
+):
+    filtered_products = products
     
-    return products[:limit]
+    if gender:
+        # Simple case-insensitive match for gender
+        filtered_products = [p for p in filtered_products if p.get("gender", "").lower() == gender.lower()]
+    
+    if category:
+        filtered_products = [p for p in filtered_products if p.get("category", "").lower() == category.lower() or p.get("articleType", "").lower() == category.lower()]
+        
+    if subCategory:
+        filtered_products = [p for p in filtered_products if p.get("subCategory", "").lower() == subCategory.lower()]
+
+    if masterCategory:
+        filtered_products = [p for p in filtered_products if p.get("masterCategory", "").lower() == masterCategory.lower()]
+    
+    # Shuffle results to show variety
+    import random
+    random.shuffle(filtered_products)
+    
+    return {"results": filtered_products[:limit], "total": len(filtered_products)}
+
+# Helper: Diversify Results
+def diversify_results(results: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    """
+    Reranks results to ensure category diversity.
+    Prioritizes showing a mix of subCategories/masterCategories.
+    """
+    if not results:
+        return []
+        
+    buckets = {}
+    
+    # Group by subCategory (or masterCategory if subCategory is missing)
+    for p in results:
+        cat = p.get("subCategory") or p.get("masterCategory", "Others")
+        if cat not in buckets:
+            buckets[cat] = []
+        buckets[cat].append(p)
+        
+    final_list = []
+    keys = list(buckets.keys())
+    
+    # Round-robin selection
+    while len(final_list) < limit and any(buckets.values()):
+        for k in keys:
+            if buckets[k]:
+                final_list.append(buckets[k].pop(0))
+                if len(final_list) >= limit:
+                    break
+                    
+    return final_list
 
 @app.get("/search")
 async def search(
@@ -216,30 +321,43 @@ async def search(
     # 1. AI Search (CLIP)
     if use_ai and search_engine and search_engine.model is not None and product_embeddings is not None:
         try:
+            # Fetch more candidates to allow for diversity reranking (3x limit)
+            search_limit = limit * 3
+            
             # search_engine.search returns (values, indices)
-            search_res = search_engine.search(q, product_embeddings, top_k=limit)
+            search_res = search_engine.search(q, product_embeddings, top_k=search_limit)
             indices = search_res[1]
             if hasattr(indices, 'cpu'):
                 indices = indices.cpu().numpy()
             
+            candidates = []
             for idx in indices:
                 idx_val = int(idx)
                 if idx_val < len(products):
-                    results.append(products[idx_val])
-            return {"query": q, "results": results, "method": "ai"}
+                    candidates.append(products[idx_val])
+            
+            # Apply Diversity Reranking
+            results = diversify_results(candidates, limit)
+            
+            return {"query": q, "results": results, "method": "ai_diversified"}
         except Exception as e:
             print(f"AI Search failed: {e}")
             # Fallback to keyword
             
     # 2. Keyword Fallback
     q_lower = q.lower()
+    keyword_candidates = []
     for p in products:
         if q_lower in p["name"].lower() or q_lower in p.get("articleType", "").lower():
-            results.append(p)
-            if len(results) >= limit:
+            keyword_candidates.append(p)
+            # Fetch enough for diversity
+            if len(keyword_candidates) >= limit * 3:
                 break
+    
+    # Apply Diversity Reranking
+    results = diversify_results(keyword_candidates, limit)
                 
-    return {"query": q, "results": results, "method": "keyword"}
+    return {"query": q, "results": results, "method": "keyword_diversified"}
 
 @app.get("/search/suggestions")
 def get_suggestions(q: str, limit: int = 5):
@@ -302,7 +420,10 @@ async def search_by_image(file: UploadFile = File(...), limit: int = 20):
         raise HTTPException(status_code=500, detail=f"Image processing failed: {str(e)}")
 
 @app.post("/measure")
-async def measure_body(file: UploadFile = File(...)):
+async def measure_body(
+    file: UploadFile = File(...),
+    height: float = Form(170.0) # Default to 170cm if not provided
+):
     """
     Estimate body measurements from an uploaded image.
     """
@@ -321,7 +442,8 @@ async def measure_body(file: UploadFile = File(...)):
              raise HTTPException(status_code=400, detail="Invalid image data")
 
         # Perform estimation
-        results = body_estimator.estimate_from_image(image_np)
+        # Pass user provided height to estimator
+        results = body_estimator.estimate_from_image(image_np, user_height_cm=height)
         
         if results.get("status") == "error":
             # We can decide to return 200 with error info or 400. 
@@ -417,33 +539,57 @@ def recommend_products(product_id: int, limit: int = 20):
     source_sub = source_product.get("subCategory")
     target_subs = []
     
+    # Enforce strict complementary rules
     if source_sub == "Topwear":
-        target_subs = ["Bottomwear", "Shoes"]
+        target_subs = ["Bottomwear", "Shoes", "Watches", "Belts", "Eyewear"]
     elif source_sub == "Bottomwear":
-        target_subs = ["Topwear", "Shoes"]
+        target_subs = ["Topwear", "Shoes", "Watches", "Belts"]
     elif source_sub == "Shoes":
-        target_subs = ["Topwear", "Bottomwear"]
+        target_subs = ["Topwear", "Bottomwear", "Watches"]
+    elif source_sub == "Dress":
+        target_subs = ["Shoes", "Watches", "Jewellery", "Bags"]
+    elif source_sub == "Saree":
+        target_subs = ["Jewellery", "Bags", "Shoes"]
     else:
         # Fallback for accessories etc. -> match with Apparel
-        target_subs = ["Topwear", "Bottomwear"]
+        target_subs = ["Topwear", "Bottomwear", "Dress"]
         
     scored_matches = []
     
     # Neutral colors that match with everything
-    neutrals = ["Black", "White", "Grey", "Navy Blue", "Beige", "Silver"]
+    neutrals = ["Black", "White", "Grey", "Navy Blue", "Beige", "Silver", "Gold"]
     
     for p in candidates:
-        if p.get("subCategory") not in target_subs:
-            continue
+        # Strictly filter by target subcategories
+        if p.get("subCategory") not in target_subs and p.get("masterCategory") not in ["Accessories", "Footwear"]:
+             if p.get("subCategory") not in target_subs:
+                continue
             
         score = 0
+        
+        # Boost complementary category diversity
+        # (e.g. if we have a Top, a Bottom is worth more than a Watch)
+        if source_sub == "Topwear" and p.get("subCategory") == "Bottomwear":
+            score += 25
+        elif source_sub == "Bottomwear" and p.get("subCategory") == "Topwear":
+            score += 25
         
         # Context Match
         if p.get("usage") == source_product.get("usage"):
             score += 10
-        if p.get("season") == source_product.get("season"):
-            score += 10
             
+        # Strict Season Matching
+        # Only allow matching if seasons are compatible or one is 'All'/'Summer'/'Winter' compatible
+        s_season = source_product.get("season")
+        p_season = p.get("season")
+        
+        if s_season == p_season:
+             score += 15 # Boost same season
+        elif s_season == "Summer" and p_season == "Winter":
+             score -= 100 # Penalize Summer + Winter mismatch
+        elif s_season == "Winter" and p_season == "Summer":
+             score -= 100 # Penalize Winter + Summer mismatch
+        
         # Color Matching Logic
         p_color = p.get("baseColour")
         s_color = source_product.get("baseColour")
@@ -463,18 +609,21 @@ def recommend_products(product_id: int, limit: int = 20):
         
     scored_matches.sort(key=lambda x: x[0], reverse=True)
     
-    # Try to pick a mix of categories if possible (e.g. 1 Bottom, 1 Shoe)
+    # Try to pick a mix of categories if possible (e.g. 1 Bottom, 1 Shoe, 1 Accessory)
     matching_items = []
     seen_subs = set()
     
-    # First pass: try to get distinct subcategories
+    # First pass: try to get distinct subcategories (Prioritize Outfit Construction)
     for score, p in scored_matches:
-        if p.get("subCategory") not in seen_subs:
+        sub = p.get("subCategory")
+        if sub not in seen_subs:
             matching_items.append(p)
-            seen_subs.add(p.get("subCategory"))
+            seen_subs.add(sub)
             
-    # Fill up the rest
+    # Fill up the rest with high scoring items if needed
     for score, p in scored_matches:
+        if len(matching_items) >= limit:
+            break
         if p not in matching_items:
             matching_items.append(p)
             
@@ -584,12 +733,36 @@ async def virtual_try_on(
             # Load from static files
             # Assuming IDs map to filenames in static/products
             cloth_path = os.path.join(static_dir, "products", f"{cloth_id}.jpg")
-            if not os.path.exists(cloth_path):
-                 # Try finding it in the products list to see if there's a custom URL logic (unlikely based on context)
-                 # But let's fallback to checking if it exists
-                 raise HTTPException(status_code=404, detail=f"Product image for ID {cloth_id} not found")
             
-            cloth_np = cv2.imread(cloth_path, cv2.IMREAD_UNCHANGED)
+            if os.path.exists(cloth_path):
+                 cloth_np = cv2.imread(cloth_path, cv2.IMREAD_UNCHANGED)
+            else:
+                 # Check if we have the URL in products list
+                 product = next((p for p in products if str(p["id"]) == str(cloth_id)), None)
+                 if product and "image_url" in product:
+                     try:
+                         print(f"Downloading image for {cloth_id} from {product['image_url']}...")
+                         import requests
+                         # Use a user agent to avoid 403s
+                         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                         resp = requests.get(product["image_url"], headers=headers, timeout=10)
+                         if resp.status_code == 200:
+                             # Convert to numpy
+                             image_bytes = np.frombuffer(resp.content, np.uint8)
+                             cloth_np = cv2.imdecode(image_bytes, cv2.IMREAD_UNCHANGED)
+                             
+                             # Cache it locally
+                             if cloth_np is not None:
+                                 cv2.imwrite(cloth_path, cloth_np)
+                                 print(f"Cached image to {cloth_path}")
+                         else:
+                             print(f"Failed to download image: {resp.status_code}")
+                     except Exception as e:
+                         print(f"Error downloading image: {e}")
+
+                 if cloth_np is None:
+                     raise HTTPException(status_code=404, detail=f"Product image for ID {cloth_id} not found locally or remotely")
+            
             if cloth_np is None:
                 raise HTTPException(status_code=400, detail="Failed to load product image from server")
                 

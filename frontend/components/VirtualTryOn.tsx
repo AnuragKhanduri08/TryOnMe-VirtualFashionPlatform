@@ -24,13 +24,13 @@ interface Product {
     image_url: string
 }
 
-export default function VirtualTryOn() {
+export default function VirtualTryOn({ initialProduct }: { initialProduct?: Product }) {
   const [personFile, setPersonFile] = useState<File | null>(null)
   const [clothFile, setClothFile] = useState<File | null>(null)
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(initialProduct || null)
   
   const [personPreview, setPersonPreview] = useState<string | null>(null)
-  const [clothPreview, setClothPreview] = useState<string | null>(null)
+  const [clothPreview, setClothPreview] = useState<string | null>(initialProduct?.image_url || null)
   const [resultImage, setResultImage] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -83,9 +83,10 @@ export default function VirtualTryOn() {
   const fetchProducts = async (q = "") => {
       setProductLoading(true)
       try {
+          // Filter strictly for Topwear to prevent incompatible items
           const url = q 
-              ? `http://localhost:8000/search?q=${q}&limit=20` 
-              : `http://localhost:8000/products?limit=20`
+              ? `http://localhost:8000/search?q=${q}&limit=20&subCategory=Topwear` 
+              : `http://localhost:8000/products?limit=20&subCategory=Topwear`
           const res = await axios.get(url)
           const data = res.data.results || res.data
           setProducts(Array.isArray(data) ? data : [])
@@ -478,16 +479,16 @@ export default function VirtualTryOn() {
         </Card>
 
         {/* Result Section */}
-        <Card className="h-full flex flex-col">
+        <Card className="h-full">
             <CardHeader>
                 <CardTitle>Result</CardTitle>
                 <CardDescription>AI-generated visualization.</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 flex items-center justify-center min-h-[400px] bg-muted/50 rounded-lg m-6 border p-0 overflow-hidden relative">
+            <CardContent className="space-y-4">
                 {manualMode ? (
-                    <div className="flex flex-col w-full h-full">
+                    <div className="flex flex-col w-full gap-4">
                      <div 
-                        className="relative w-full h-[500px] flex-shrink-0 flex items-center justify-center bg-gray-100 overflow-hidden cursor-crosshair"
+                        className="relative w-full h-[500px] flex items-center justify-center bg-gray-100 overflow-hidden cursor-crosshair rounded-lg border"
                         onMouseMove={(e) => {
                             if (isDragging) {
                                  setDragPos({
@@ -646,7 +647,7 @@ export default function VirtualTryOn() {
                     </div>
 
                     {/* Manual Controls */}
-                    <div className="p-4 space-y-4 bg-white border-t w-full">
+                    <div className="space-y-4 w-full">
                         <div className="flex items-center justify-between">
                             <h4 className="font-semibold text-sm flex items-center gap-2">
                                  <Sliders className="w-4 h-4" /> Fit Adjustments
@@ -750,7 +751,7 @@ export default function VirtualTryOn() {
                             className="object-contain rounded-md shadow-lg" 
                         />
                     ) : (
-                        <div className="text-center text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
                             <Sparkles className="w-12 h-12 mx-auto mb-2 opacity-20" />
                             <p>Result will appear here</p>
                         </div>

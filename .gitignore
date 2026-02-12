@@ -22,9 +22,9 @@ coverage/
 # Ignore Large Data Files (Crucial for GitHub limit)
 # backend/static/products/
 # backend/static/images/
-# backend/product_embeddings.npy
-# backend/product_histograms.npy
-# backend/product_histograms.pkl
+backend/product_embeddings.npy
+backend/product_histograms.npy
+backend/product_histograms.pkl
 
 # Ignore Logs
 *.log

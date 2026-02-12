@@ -9,3 +9,7 @@ sentence-transformers
 Pillow
 ultralytics
 opencv-python
+transformers
+rembg
+gradio_client
+sqlalchemy

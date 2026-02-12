@@ -1,0 +1,105 @@
+# PROJECT SPECIFICATIONS & REQUIREMENTS MANUAL
+# ============================================
+
+# 1. HARDWARE REQUIREMENTS
+# ------------------------
+# Processor (CPU): Intel Core i5 (10th Gen) or AMD Ryzen 5 3600 equivalent or better.
+# RAM: Minimum 8GB (16GB recommended for AI model loading).
+# Storage: At least 10GB of free space (for Dataset, Models, and Dependencies).
+# GPU (Recommended): NVIDIA GeForce GTX 1650 or higher (4GB+ VRAM) with CUDA support.
+#    - Required for: Fast Body Measurement, Virtual Try-On, and Image Embeddings.
+#    - Note: The project works on CPU-only machines but will be significantly slower.
+
+# 2. SOFTWARE PREREQUISITES (Must be installed first)
+# ---------------------------------------------------
+# A. Node.js (Runtime for Frontend)
+#    - Role: Required to run the Next.js Frontend server.
+#    - Version: Node.js 18.17.0 or higher (LTS).
+#    - Download: https://nodejs.org/
+#    - Verify: `node --version`
+
+# B. Python (Runtime for Backend)
+#    - Role: Runs the FastAPI backend and AI models.
+#    - Version: Python 3.9, 3.10, or 3.11.
+#    - Download: https://www.python.org/downloads/
+#    - Verify: `python --version`
+
+# C. PostgreSQL (Database)
+#    - Role: Stores product metadata (names, prices, image URLs, embeddings).
+#    - Version: PostgreSQL 14 or higher.
+#    - Download: https://www.postgresql.org/download/windows/
+#    - Configuration:
+#        - Host: localhost
+#        - Port: 5432
+#        - User: postgres
+#        - Password: (Your configured password)
+#        - Database Name: fashion_db
+
+# 3. TECH STACK & LIBRARIES
+# -------------------------
+# A. Frontend (User Interface)
+#    - Framework: Next.js 14 (App Router)
+#    - Language: TypeScript
+#    - Styling: Tailwind CSS
+#    - UI Components: ShadCN UI (Radix Primitives)
+#    - Key Libraries:
+#        - axios (API requests)
+#        - lucide-react (Icons)
+#        - framer-motion (Animations)
+
+# B. Backend (API & Logic)
+#    - Framework: FastAPI (High-performance Async API)
+#    - Language: Python
+#    - Database ORM: SQLAlchemy (Interact with Postgres)
+#    - Server: Uvicorn (ASGI Server)
+#    - Key Libraries (listed in backend/requirements.txt):
+#        - torch (PyTorch for AI models)
+#        - transformers (Hugging Face models)
+#        - sentence-transformers (Text/Image Embeddings)
+#        - ultralytics (YOLOv8 for Pose Estimation)
+#        - pillow (Image processing)
+#        - rembg (Background Removal)
+
+# 4. DATASET INFORMATION
+# ----------------------
+# Source: Myntra Fashion Dataset (Kaggle)
+# Link: https://www.kaggle.com/datasets/djordjep/myntra-fashion-dataset
+# Structure:
+#    - Metadata: CSV files containing Product ID, Name, Gender, Category, Image URL.
+#    - Images: Stored externally (CDN/URLs) or locally in `backend/static/images`.
+# Database Schema (Postgres):
+#    - Table `products`: id (PK), name, gender, category, sub_category, image_path, price.
+#    - The database is automatically populated from CSVs on first run if empty.
+
+# 5. AI MODELS USED
+# -----------------
+# 1. YOLOv8n-Pose (Pose Estimation):
+#    - Used for: "Body Measurement" feature.
+#    - Detects key body points (shoulders, hips) to estimate shirt size.
+# 2. CLIP / Sentence-Transformers:
+#    - Used for: "AI Smart Search" and "Recommendations".
+#    - Converts product images and text queries into vector embeddings.
+# 3. Segformer (Semantic Segmentation):
+#    - Used for: Virtual Try-On (identifying clothing areas).
+
+# 6. HOW TO RUN THE PROJECT
+# -------------------------
+# OPTION A: The Easy Way (Windows)
+#    1. Double-click the `run.bat` file in the root directory.
+#    2. Select Option [2] "Install Dependencies" (First time only).
+#    3. Select Option [1] "Start Project".
+#       - This launches both Backend (Port 8000) and Frontend (Port 3000).
+
+# OPTION B: Manual Setup
+#    1. Setup Backend:
+#       cd backend
+#       pip install -r requirements.txt
+#       uvicorn main:app --reload --host 0.0.0.0 --port 8000
+#
+#    2. Setup Frontend:
+#       cd frontend
+#       npm install
+#       npm run dev
+#
+#    3. Access the App:
+#       Open http://localhost:3000 in your browser.

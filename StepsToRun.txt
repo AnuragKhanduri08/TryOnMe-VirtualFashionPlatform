@@ -1,0 +1,76 @@
+========================================================================
+   VIRTUAL FASHION - STEP-BY-STEP SETUP GUIDE
+========================================================================
+
+Follow these steps exactly to run the project without errors.
+
+------------------------------------------------------------------------
+STEP 1: INSTALL PREREQUISITES
+------------------------------------------------------------------------
+Make sure you have the following installed on your computer:
+1. Python (Version 3.8 or newer)
+   - Download: https://www.python.org/downloads/
+   - IMPORTANT: Check "Add Python to PATH" during installation.
+2. Node.js (Version 18 or newer)
+   - Download: https://nodejs.org/en/download/
+
+------------------------------------------------------------------------
+STEP 2: CONFIGURE ENVIRONMENT VARIABLES
+------------------------------------------------------------------------
+1. Locate the file named ".env.example" in this folder.
+2. Copy it and rename the copy to ".env".
+3. Open ".env" with any text editor (Notepad, VS Code).
+   - By default, it uses SQLite (no setup needed).
+   - If you want to use PostgreSQL, uncomment the DATABASE_URL line and 
+     add your database credentials.
+
+------------------------------------------------------------------------
+STEP 3: INSTALL PROJECT DEPENDENCIES
+------------------------------------------------------------------------
+1. Double-click "run.bat" to open the project menu.
+2. Type "2" and press Enter (Option: [2] Install Dependencies).
+3. Wait for both Backend (Python) and Frontend (Node.js) installations to finish.
+   - If you see red error messages, ensure Python/Node are installed correctly.
+
+------------------------------------------------------------------------
+STEP 4: SETUP DATABASE (CRITICAL)
+------------------------------------------------------------------------
+Even if you use the default SQLite, it's best to run the migration script 
+to ensure the database tables are created and populated with product data.
+
+1. Open "run.bat" again (if you closed it).
+2. Type "7" and press Enter (Option: [7] Migrate Data to Database).
+   - This will read "backend/products.json" and insert all products into your database.
+   - Success Message: "Migration Complete!"
+
+------------------------------------------------------------------------
+STEP 5: GENERATE AI MODELS (MANDATORY)
+------------------------------------------------------------------------
+The search and recommendation features will NOT work without this step because
+the AI model files (embeddings) are too large to be stored on GitHub.
+
+1. Open "run.bat".
+2. Type "6" and press Enter (Option: [6] Setup AI Models).
+3. Wait for the process to complete.
+   - It will download the CLIP model (approx. 500MB) - this happens only once.
+   - It will generate "product_embeddings.npy" in the backend folder.
+   - Success Message: "AI Setup Complete!"
+
+------------------------------------------------------------------------
+STEP 6: RUN THE APPLICATION
+------------------------------------------------------------------------
+1. Open "run.bat".
+2. Type "1" and press Enter (Option: [1] Start Project).
+3. Two new windows will open:
+   - "Backend Server": Wait until you see "Application startup complete".
+   - "Frontend App": Wait until you see "Local: http://localhost:3000".
+
+4. Open your browser and go to: http://localhost:3000
+
+========================================================================
+TROUBLESHOOTING
+========================================================================
+- "Command not found": Reinstall Python or Node.js and restart your computer.
+- "Search returns 0 results": You skipped STEP 5. Run Option [6] in run.bat.
+- "Database error": You skipped STEP 4. Run Option [7] in run.bat.
+- "Port 8000/3000 already in use": Close other terminal windows running the app.

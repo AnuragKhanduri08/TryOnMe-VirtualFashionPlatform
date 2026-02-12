@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Virtual Fashion Platform",
+  title: "TryOnMe",
   description: "AI-Powered Shopping Experience",
 };
 
