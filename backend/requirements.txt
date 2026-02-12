@@ -13,3 +13,4 @@ transformers
 rembg
 gradio_client
 sqlalchemy
+python-dotenv
