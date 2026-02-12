@@ -67,9 +67,31 @@ By default, the app uses a simple SQLite database. If you want to use **PostgreS
 3. **Migrate Data**:
    - Run `run.bat`.
    - Select **Option [7] Migrate Data to Database**.
-   - This will create the tables and import products from `products.json` into your PostgreSQL database.
-4. **Setup AI Models**:
+   - This will create the tables and import products from `products.json` into your PostgreSQL database.### 4. Setup AI Models:
    - Don't forget to run **Option [6]** again if you switched databases, to ensure embeddings are aligned with the new DB IDs.
+
+## Deployment Guide (Render & Vercel)
+
+### 1. Backend & Database (Render.com)
+1. Push your code to GitHub.
+2. Sign up at [Render.com](https://render.com).
+3. Click **"New"** -> **"Blueprint"**.
+4. Connect your GitHub repository.
+5. Render will detect the `render.yaml` file and automatically set up:
+   - A PostgreSQL Database.
+   - The FastAPI Backend Service.
+6. Click **"Apply"**.
+7. Once deployed, copy your **Backend URL** (e.g., `https://virtual-fashion-backend.onrender.com`).
+
+### 2. Frontend (Vercel)
+1. Sign up at [Vercel.com](https://vercel.com).
+2. Click **"Add New Project"** and import your GitHub repo.
+3. Vercel will auto-detect Next.js.
+4. **Environment Variables**:
+   - Add a new variable named `NEXT_PUBLIC_API_URL`.
+   - Set the value to your Render Backend URL (e.g., `https://virtual-fashion-backend.onrender.com`).
+   - *Note: Do not add a trailing slash.*
+5. Click **"Deploy"**.
 
 #### Option B: Manual Setup (Linux/Mac/Windows)
 

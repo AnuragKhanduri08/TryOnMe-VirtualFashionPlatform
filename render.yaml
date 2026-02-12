@@ -1,0 +1,34 @@
+services:
+  # 1. Backend Service (FastAPI)
+  - type: web
+    name: virtual-fashion-backend
+    env: python
+    region: ohio
+    plan: free
+    buildCommand: |
+      cd backend
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend
+      # Run data migration first (populate DB)
+      python migrate_to_db.py
+      # Generate AI models (embeddings)
+      python setup_ai.py
+      # Start the app
+      uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: DATABASE_URL
+        fromDatabase:
+          name: virtual-fashion-db
+          property: connectionString
+
+databases:
+  # 2. Database Service (PostgreSQL)
+  - name: virtual-fashion-db
+    databaseName: virtual_fashion
+    user: virtual_fashion_user
+    plan: free
+    region: ohio
+    ipAllowList: [] # Allow all IPs for now (or restrict if needed)
