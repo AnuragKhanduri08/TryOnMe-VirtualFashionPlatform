@@ -19,7 +19,7 @@ import {
 import { ModeToggle } from "@/components/theme-toggle"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Search, ShoppingBag, Shirt, Loader2, Sparkles, Camera, Ruler, LayoutDashboard, ScanSearch } from "lucide-react"
+import { Search, ShoppingBag, Shirt, Loader2, Sparkles, Camera, Ruler, LayoutDashboard, ScanSearch, Menu, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface Product {
@@ -56,6 +56,9 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<Product[]>([])
   const [matchingItems, setMatchingItems] = useState<Product[]>([])
   const [recLoading, setRecLoading] = useState(false)
+  
+  // Mobile Menu State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Carousel State
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -272,6 +275,12 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-4">
+                {/* Mobile Menu Toggle */}
+                <div className="md:hidden">
+                    <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                        {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                    </Button>
+                </div>
                 <div className="hidden lg:flex items-center gap-1 mr-2">
                     <Button 
                         variant={currentView === "tryon" ? "secondary" : "ghost"} 
@@ -352,6 +361,61 @@ export default function Home() {
             </div>
         </div>
       </nav>
+
+      {/* Mobile Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed top-16 left-0 right-0 bg-background border-b z-30 p-4 shadow-lg animate-in slide-in-from-top-5">
+            <div className="flex flex-col gap-4">
+                <div className="relative">
+                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground z-10" />
+                     <Input 
+                        placeholder="Search..." 
+                        className="pl-9 h-10 w-full" 
+                        value={searchQuery}
+                        onChange={handleSearch}
+                        onKeyDown={handleSearchSubmit}
+                     />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" onClick={() => { setCurrentView("tryon"); setMobileMenuOpen(false); }} className="justify-start">
+                        <Camera className="mr-2 h-4 w-4" /> Try-On
+                    </Button>
+                    <Button variant="outline" onClick={() => { setCurrentView("search"); setMobileMenuOpen(false); }} className="justify-start">
+                        <ScanSearch className="mr-2 h-4 w-4" /> AI Search
+                    </Button>
+                    <Button variant="outline" onClick={() => { setCurrentView("measure"); setMobileMenuOpen(false); }} className="justify-start">
+                        <Ruler className="mr-2 h-4 w-4" /> Size Guide
+                    </Button>
+                    <Button variant="outline" onClick={() => { setCurrentView("dashboard"); setMobileMenuOpen(false); }} className="justify-start">
+                        <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+                    </Button>
+                </div>
+
+                <div className="border-t pt-4">
+                    <h3 className="font-semibold mb-2 text-sm text-muted-foreground">Categories</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {["Men", "Women", "Boys", "Girls"].map((gender) => (
+                            <Button 
+                                key={gender} 
+                                variant={activeTab === gender ? "default" : "ghost"} 
+                                size="sm"
+                                onClick={() => {
+                                    setActiveTab(gender)
+                                    setMobileMenuOpen(false)
+                                    setCurrentView("shop")
+                                    setShowHero(false)
+                                    fetchProducts("")
+                                }}
+                            >
+                                {gender}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 w-full flex flex-col min-h-[calc(100vh-64px)]">
