@@ -8,17 +8,22 @@ services:
     buildCommand: |
       cd backend
       pip install -r requirements.txt
+      # Pre-download models during build
+      python download_models.py
     startCommand: |
       cd backend
       # Run data migration first (populate DB)
       python migrate_to_db.py
-      # Generate AI models (embeddings)
+      # Generate AI models (embeddings) - now fast because model is cached
       python setup_ai.py
       # Start the app
       uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.12
+      # Cache models in the project directory so they persist across build/run
+      - key: HF_HOME
+        value: /opt/render/project/src/backend/model_cache
       - key: DATABASE_URL
         fromDatabase:
           name: virtual-fashion-db
