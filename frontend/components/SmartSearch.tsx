@@ -66,6 +66,9 @@ export default function SmartSearch() {
     setShowSuggestions(false)
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      console.log("SmartSearch: Using API URL:", API_URL)
+      console.log("SmartSearch: Querying for:", q)
+      
       const res = await axios.get(`${API_URL}/search?q=${q}&limit=20`)
       setResults(res.data.results)
     } catch (error) {

@@ -112,6 +112,8 @@ export default function Home() {
     setLoading(true)
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      console.log("HomePage: Using API URL:", API_URL)
+      
       let url = ""
       if (query) {
           url = `${API_URL}/search?q=${query}&limit=50`
@@ -136,6 +138,7 @@ export default function Home() {
           }
       }
       
+      console.log("HomePage: Fetching URL:", url)
       const res = await axios.get(url)
       // Search endpoint returns { results: [...] }, products endpoint returns [...]
       const data = res.data.results || res.data
