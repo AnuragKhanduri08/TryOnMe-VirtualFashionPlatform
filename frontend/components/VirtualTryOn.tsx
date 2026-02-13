@@ -83,7 +83,8 @@ export default function VirtualTryOn({ initialProduct }: { initialProduct?: Prod
   const fetchProducts = async (q = "") => {
       setProductLoading(true)
       try {
-          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          const API_URL = rawUrl.trim()
           // Filter strictly for Topwear to prevent incompatible items
           const url = q 
               ? `${API_URL}/search?q=${q}&limit=20&subCategory=Topwear` 
@@ -145,7 +146,9 @@ export default function VirtualTryOn({ initialProduct }: { initialProduct?: Prod
     }
 
     try {
-      const res = await axios.post("http://localhost:8000/try-on", formData, {
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const API_URL = rawUrl.trim()
+      const res = await axios.post(`${API_URL}/try-on`, formData, {
         headers: { "Content-Type": "multipart/form-data" }
       })
       setResultImage(res.data.result_image)

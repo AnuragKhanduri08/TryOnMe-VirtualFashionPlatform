@@ -36,7 +36,8 @@ export default function SmartSearch() {
         return
     }
     try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const API_URL = rawUrl.trim()
         const res = await axios.get(`${API_URL}/search/suggestions?q=${value}`)
         setSuggestions(res.data.suggestions)
         setShowSuggestions(true)
@@ -65,7 +66,8 @@ export default function SmartSearch() {
     setLoading(true)
     setShowSuggestions(false)
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const API_URL = rawUrl.trim()
       console.log("SmartSearch: Using API URL:", API_URL)
       console.log("SmartSearch: Querying for:", q)
       
@@ -90,7 +92,8 @@ export default function SmartSearch() {
     formData.append("file", imageFile)
     
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const API_URL = rawUrl.trim()
       const res = await axios.post(`${API_URL}/search/image?limit=20`, formData, {
         headers: { "Content-Type": "multipart/form-data" }
       })
@@ -108,7 +111,8 @@ export default function SmartSearch() {
     setIsDialogOpen(true)
     setRecLoading(true)
     try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const API_URL = rawUrl.trim()
         const res = await axios.get(`${API_URL}/recommend/${product.id}`)
         setRecommendations(res.data.recommendations)
         setMatchingItems(res.data.matching_items || [])

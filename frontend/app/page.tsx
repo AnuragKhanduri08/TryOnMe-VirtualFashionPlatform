@@ -113,7 +113,8 @@ export default function Home() {
   const fetchProducts = async (query = "") => {
     setLoading(true)
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const API_URL = rawUrl.trim()
       console.log("HomePage: Using API URL:", API_URL)
       
       let url = ""
@@ -162,7 +163,8 @@ export default function Home() {
       
       if (query.length > 1) {
           try {
-              const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+              const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+              const API_URL = rawUrl.trim()
               const res = await axios.get(`${API_URL}/search?q=${query}&limit=5`)
               const data = res.data.results || res.data
               setSearchResults(Array.isArray(data) ? data : [])
@@ -213,7 +215,8 @@ export default function Home() {
       setRecOpen(true)
       setRecLoading(true)
       try {
-          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          const API_URL = rawUrl.trim()
           const res = await axios.get(`${API_URL}/recommend/${product.id}`)
           setRecommendations(res.data.recommendations || [])
           setMatchingItems(res.data.matching_items || [])
@@ -230,9 +233,9 @@ export default function Home() {
       <div className="bg-yellow-100 border-b border-yellow-200 p-2 text-xs text-black font-mono overflow-auto">
         <p><strong>DEBUG INFO:</strong></p>
         <p>API URL Env: {process.env.NEXT_PUBLIC_API_URL ? `"${process.env.NEXT_PUBLIC_API_URL}"` : "undefined"}</p>
-        <p>Fallback URL: {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}</p>
+        <p>Fallback URL: {(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").trim()}</p>
         {errorMsg && <p className="text-red-600 font-bold">Last Error: {errorMsg}</p>}
-        <p>Current View: {currentView}</p>
+        <p>Current View: {currentView} | Loading: {loading.toString()} | Products: {products.length}</p>
       </div>
 
       {/* Navbar */}
