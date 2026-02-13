@@ -307,28 +307,28 @@ async def search(
         engine = get_search_engine()
         if engine and engine.model is not None and product_embeddings is not None:
             try:
-            # Fetch more candidates to allow for diversity reranking (3x limit)
-            search_limit = limit * 3
-            
-            # search_engine.search returns (values, indices)
-            search_res = engine.search(q, product_embeddings, top_k=search_limit)
-            indices = search_res[1]
-            if hasattr(indices, 'cpu'):
-                indices = indices.cpu().numpy()
-            
-            candidates = []
-            for idx in indices:
-                idx_val = int(idx)
-                if idx_val < len(products):
-                    candidates.append(products[idx_val])
-            
-            # Apply Diversity Reranking
-            results = diversify_results(candidates, limit)
-            
-            return {"query": q, "results": results, "method": "ai_diversified"}
-        except Exception as e:
-            print(f"AI Search failed: {e}")
-            # Fallback to keyword
+                # Fetch more candidates to allow for diversity reranking (3x limit)
+                search_limit = limit * 3
+                
+                # search_engine.search returns (values, indices)
+                search_res = engine.search(q, product_embeddings, top_k=search_limit)
+                indices = search_res[1]
+                if hasattr(indices, 'cpu'):
+                    indices = indices.cpu().numpy()
+                
+                candidates = []
+                for idx in indices:
+                    idx_val = int(idx)
+                    if idx_val < len(products):
+                        candidates.append(products[idx_val])
+                
+                # Apply Diversity Reranking
+                results = diversify_results(candidates, limit)
+                
+                return {"query": q, "results": results, "method": "ai_diversified"}
+            except Exception as e:
+                print(f"AI Search failed: {e}")
+                # Fallback to keyword
             
     # 2. Keyword Fallback
     q_lower = q.lower()
