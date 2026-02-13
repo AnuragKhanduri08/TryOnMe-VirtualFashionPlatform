@@ -37,6 +37,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("Men")
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string>("") // Debug State
+  
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Product[]>([])
@@ -143,9 +145,11 @@ export default function Home() {
       // Search endpoint returns { results: [...] }, products endpoint returns [...]
       const data = res.data.results || res.data
       setProducts(Array.isArray(data) ? data : [])
-    } catch (error) {
+      setErrorMsg("") // Clear error on success
+    } catch (error: any) {
       console.error("Failed to fetch products", error)
       setProducts([])
+      setErrorMsg(error.message || "Unknown Fetch Error")
     } finally {
       setLoading(false)
     }
@@ -222,6 +226,15 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen bg-background text-foreground transition-colors duration-300">
+      {/* DEBUG BANNER - Remove before final production */}
+      <div className="bg-yellow-100 border-b border-yellow-200 p-2 text-xs text-black font-mono overflow-auto">
+        <p><strong>DEBUG INFO:</strong></p>
+        <p>API URL Env: {process.env.NEXT_PUBLIC_API_URL ? `"${process.env.NEXT_PUBLIC_API_URL}"` : "undefined"}</p>
+        <p>Fallback URL: {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}</p>
+        {errorMsg && <p className="text-red-600 font-bold">Last Error: {errorMsg}</p>}
+        <p>Current View: {currentView}</p>
+      </div>
+
       {/* Navbar */}
       <nav className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between px-4">
