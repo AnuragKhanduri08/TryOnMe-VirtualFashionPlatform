@@ -16,7 +16,8 @@ export default function MonitoringDashboard() {
     // Don't set full loading state on refresh to avoid flickering
     // setLoading(true) 
     try {
-      const res = await axios.get("http://localhost:8000/dashboard/stats")
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const res = await axios.get(`${API_URL}/dashboard/stats`)
       setStats(res.data)
       setLastUpdated(new Date())
     } catch (error) {

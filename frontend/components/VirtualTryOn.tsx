@@ -83,10 +83,11 @@ export default function VirtualTryOn({ initialProduct }: { initialProduct?: Prod
   const fetchProducts = async (q = "") => {
       setProductLoading(true)
       try {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
           // Filter strictly for Topwear to prevent incompatible items
           const url = q 
-              ? `http://localhost:8000/search?q=${q}&limit=20&subCategory=Topwear` 
-              : `http://localhost:8000/products?limit=20&subCategory=Topwear`
+              ? `${API_URL}/search?q=${q}&limit=20&subCategory=Topwear` 
+              : `${API_URL}/products?limit=20&subCategory=Topwear`
           const res = await axios.get(url)
           const data = res.data.results || res.data
           setProducts(Array.isArray(data) ? data : [])

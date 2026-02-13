@@ -109,12 +109,13 @@ export default function Home() {
   const fetchProducts = async (query = "") => {
     setLoading(true)
     try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
       let url = ""
       if (query) {
-          url = `http://localhost:8000/search?q=${query}&limit=50`
+          url = `${API_URL}/search?q=${query}&limit=50`
       } else {
           // Increase limit to 100 to support home page sections
-          url = `http://localhost:8000/products?limit=100&gender=${activeTab}`
+          url = `${API_URL}/products?limit=100&gender=${activeTab}`
           
           if (selectedCategory !== "All") {
             if (selectedCategory === "Shoes") {
@@ -152,7 +153,8 @@ export default function Home() {
       
       if (query.length > 1) {
           try {
-              const res = await axios.get(`http://localhost:8000/search?q=${query}&limit=5`)
+              const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+              const res = await axios.get(`${API_URL}/search?q=${query}&limit=5`)
               const data = res.data.results || res.data
               setSearchResults(Array.isArray(data) ? data : [])
               setShowDropdown(true)
@@ -202,7 +204,8 @@ export default function Home() {
       setRecOpen(true)
       setRecLoading(true)
       try {
-          const res = await axios.get(`http://localhost:8000/recommend/${product.id}`)
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          const res = await axios.get(`${API_URL}/recommend/${product.id}`)
           setRecommendations(res.data.recommendations || [])
           setMatchingItems(res.data.matching_items || [])
       } catch (error) {

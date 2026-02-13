@@ -36,7 +36,8 @@ export default function SmartSearch() {
         return
     }
     try {
-        const res = await axios.get(`http://localhost:8000/search/suggestions?q=${value}`)
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const res = await axios.get(`${API_URL}/search/suggestions?q=${value}`)
         setSuggestions(res.data.suggestions)
         setShowSuggestions(true)
     } catch (error) {
@@ -64,7 +65,8 @@ export default function SmartSearch() {
     setLoading(true)
     setShowSuggestions(false)
     try {
-      const res = await axios.get(`http://localhost:8000/search?q=${q}&limit=20`)
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const res = await axios.get(`${API_URL}/search?q=${q}&limit=20`)
       setResults(res.data.results)
     } catch (error) {
       console.error("Search failed", error)
@@ -85,7 +87,8 @@ export default function SmartSearch() {
     formData.append("file", imageFile)
     
     try {
-      const res = await axios.post(`http://localhost:8000/search/image?limit=20`, formData, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const res = await axios.post(`${API_URL}/search/image?limit=20`, formData, {
         headers: { "Content-Type": "multipart/form-data" }
       })
       setResults(res.data.results)
@@ -102,7 +105,8 @@ export default function SmartSearch() {
     setIsDialogOpen(true)
     setRecLoading(true)
     try {
-        const res = await axios.get(`http://localhost:8000/recommend/${product.id}`)
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const res = await axios.get(`${API_URL}/recommend/${product.id}`)
         setRecommendations(res.data.recommendations)
         setMatchingItems(res.data.matching_items || [])
     } catch (error) {
