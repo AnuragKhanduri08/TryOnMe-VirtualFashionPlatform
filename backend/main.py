@@ -27,11 +27,13 @@ from models import Base, Product
 # Create tables if not exist (mostly for SQLite fallback, migration script handles this usually)
 Base.metadata.create_all(bind=engine)
 
+from sqlalchemy import or_, func, desc
+
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Global Variables
-products = []
+product_ids = [] # Only store IDs to map embeddings index -> DB ID
 product_embeddings = None
 product_histograms = None
 search_engine = None
@@ -48,79 +50,69 @@ metrics = {
 
 # Load Data
 def load_data():
-    global products, product_embeddings, product_histograms
+    global product_ids, product_embeddings, product_histograms
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    products_path = os.path.join(base_dir, "products.json")
     embeddings_path = os.path.join(base_dir, "product_embeddings.npy")
     histograms_path = os.path.join(base_dir, "product_histograms.npy")
     
     print("--- START DATA LOADING ---")
     
-    # Priority: DB -> JSON
+    # 1. Load Product IDs from DB (Lightweight)
     try:
-        print("Attempting to load products from Database...")
+        print("Loading product IDs from Database...")
         db = SessionLocal()
         try:
-            db_products = db.query(Product).order_by(Product.id).all()
-            if db_products and len(db_products) > 0:
-                products = [p.to_dict() for p in db_products]
-                print(f"✅ Loaded {len(products)} products from Database.")
-            else:
-                print("⚠️ Database returned 0 products.")
-                raise Exception("DB Empty")
-                
-        except Exception as e:
-            print(f"⚠️ DB Load failed/skipped: {e}. Falling back to products.json...")
-            # Fallback to JSON if DB fails or empty
-            if os.path.exists(products_path):
-                with open(products_path, "r") as f:
-                    products = json.load(f)
-                print(f"✅ Loaded {len(products)} products from JSON ({products_path}).")
-            else:
-                print(f"❌ products.json NOT FOUND at {products_path}!")
-                products = []
+            # We MUST order by ID to ensure alignment with embeddings if they were generated in ID order
+            ids_query = db.query(Product.id).order_by(Product.id).all()
+            product_ids = [r[0] for r in ids_query]
+            print(f"✅ Loaded {len(product_ids)} product IDs from Database.")
             
+            if not product_ids:
+                print("⚠️ Database returned 0 products.")
+        except Exception as e:
+            print(f"❌ DB Error loading IDs: {e}")
+            product_ids = []
         finally:
             db.close()
             
     except Exception as e:
-        print(f"❌ Critical Error loading products: {e}")
-        products = []
+        print(f"❌ Critical Error loading data: {e}")
+        product_ids = []
         
-    print(f"📊 Final Product Count in Memory: {len(products)}")
+    print(f"📊 Final Product ID Count in Memory: {len(product_ids)}")
 
-    # LIMIT DATA FOR FREE TIER STABILITY
-    # Render Free Tier has 512MB RAM. 44k products + embeddings + torch is too much.
-    MAX_PRODUCTS = 1000
-    if len(products) > MAX_PRODUCTS:
-        print(f"⚠️ Limiting data to {MAX_PRODUCTS} items to prevent Out-Of-Memory on Free Tier.")
-        products = products[:MAX_PRODUCTS]
-        print(f"✅ New Product Count: {len(products)}")
-
+    # 2. Load Embeddings (Numpy - Mapped to product_ids by index)
     try:
         if os.path.exists(embeddings_path):
             print("Loading product_embeddings.npy...")
             loaded_embeddings = np.load(embeddings_path)
-            # Slice embeddings to match products
-            if len(loaded_embeddings) > len(products):
-                 product_embeddings = loaded_embeddings[:len(products)]
+            
+            # Ensure alignment
+            if len(loaded_embeddings) == len(product_ids):
+                product_embeddings = loaded_embeddings
+                print(f"✅ Loaded embeddings: {product_embeddings.shape} (Aligned with IDs)")
             else:
-                 product_embeddings = loaded_embeddings
-            print(f"Loaded embeddings: {product_embeddings.shape}")
+                print(f"⚠️ Embeddings count ({len(loaded_embeddings)}) != ID count ({len(product_ids)}). Truncating to min.")
+                min_len = min(len(loaded_embeddings), len(product_ids))
+                product_embeddings = loaded_embeddings[:min_len]
+                product_ids = product_ids[:min_len]
+                
         else:
             print("product_embeddings.npy not found.")
             
         if os.path.exists(histograms_path):
             loaded_histograms = np.load(histograms_path)
-            # Slice histograms to match products
-            if len(loaded_histograms) > len(products):
-                 product_histograms = loaded_histograms[:len(products)]
+            if len(loaded_histograms) == len(product_ids):
+                product_histograms = loaded_histograms
+                print(f"✅ Loaded histograms: {product_histograms.shape}")
             else:
-                 product_histograms = loaded_histograms
-            print(f"Loaded histograms: {product_histograms.shape}")
+                 # Align
+                 min_len = min(len(loaded_histograms), len(product_ids))
+                 product_histograms = loaded_histograms[:min_len]
+                 # If embeddings were longer, we might have issue, but usually generated together
     except Exception as e:
-        print(f"Error loading data: {e}")
+        print(f"Error loading numpy data: {e}")
 
 # Helper: Lazy Loaders
 def get_search_engine():
