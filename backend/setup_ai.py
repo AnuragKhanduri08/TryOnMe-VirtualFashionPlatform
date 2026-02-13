@@ -50,67 +50,73 @@ def setup_ai_models():
         print("❌ No products found! Cannot generate embeddings.")
         return
 
-    # 2. Generate Text Embeddings (CLIP)
-    print("\n[1/2] Generating Text Embeddings (CLIP)...")
-    try:
-        from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer
-        
-        model_name = "openai/clip-vit-base-patch32"
-        print(f"Loading model: {model_name}...")
-        
-        model = CLIPModel.from_pretrained(model_name)
-        processor = CLIPProcessor.from_pretrained(model_name)
-        model.eval()
-        
-        descriptions = [
-            f"{p.get('gender', '')} {p.get('category', '')} {p.get('subCategory', '')} {p.get('name', '')} {p.get('baseColour', '')}".strip() 
-            for p in products
-        ]
-        
-        print(f"Generating embeddings for {len(descriptions)} items...")
-        
-        all_embeddings = []
-        batch_size = 32
-        
-        for i in range(0, len(descriptions), batch_size):
-            batch = descriptions[i:i + batch_size]
-            if i % 100 == 0:
-                print(f"Processing batch {i}/{len(descriptions)}...", flush=True)
-                
-            try:
-                inputs = processor(text=batch, return_tensors="pt", padding=True, truncation=True)
-                with torch.no_grad():
-                    outputs = model.get_text_features(**inputs)
-                
-                # Normalize embeddings
-                # Handle Transformers Output object if necessary
-                if not isinstance(outputs, torch.Tensor):
-                    if hasattr(outputs, 'text_embeds'):
-                        outputs = outputs.text_embeds
-                    elif hasattr(outputs, 'pooler_output'):
-                        outputs = outputs.pooler_output
-                    elif hasattr(outputs, 'last_hidden_state'):
-                        # Mean pooling if we get raw hidden states
-                        outputs = outputs.last_hidden_state.mean(dim=1)
-                
-                outputs = outputs / outputs.norm(dim=-1, keepdim=True)
-                all_embeddings.append(outputs)
-            except Exception as e:
-                print(f"Error processing batch {i}: {e}")
-                # Append zeros to keep alignment
-                all_embeddings.append(torch.zeros((len(batch), 512)))
-                
-        if all_embeddings:
-            final_embeddings = torch.cat(all_embeddings, dim=0).numpy()
-            np.save("product_embeddings.npy", final_embeddings)
-            print(f"✅ Saved 'product_embeddings.npy' with shape {final_embeddings.shape}")
-        else:
-            print("❌ Failed to generate any embeddings.")
+    # Check if embeddings already exist to skip generation
+    embeddings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "product_embeddings.npy")
+    if os.path.exists(embeddings_path):
+        print(f"✅ Found existing embeddings at {embeddings_path}. Skipping generation.")
+        # We can return here if we don't want to check histograms, but let's allow histogram check
+    else:
+        # 2. Generate Text Embeddings (CLIP)
+        print("\n[1/2] Generating Text Embeddings (CLIP)...")
+        try:
+            from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer
             
-    except ImportError:
-        print("❌ 'transformers' library not found. Please run 'pip install transformers'.")
-    except Exception as e:
-        print(f"❌ Error generating embeddings: {e}")
+            model_name = "openai/clip-vit-base-patch32"
+            print(f"Loading model: {model_name}...")
+            
+            model = CLIPModel.from_pretrained(model_name)
+            processor = CLIPProcessor.from_pretrained(model_name)
+            model.eval()
+            
+            descriptions = [
+                f"{p.get('gender', '')} {p.get('category', '')} {p.get('subCategory', '')} {p.get('name', '')} {p.get('baseColour', '')}".strip() 
+                for p in products
+            ]
+            
+            print(f"Generating embeddings for {len(descriptions)} items...")
+            
+            all_embeddings = []
+            batch_size = 32
+            
+            for i in range(0, len(descriptions), batch_size):
+                batch = descriptions[i:i + batch_size]
+                if i % 100 == 0:
+                    print(f"Processing batch {i}/{len(descriptions)}...", flush=True)
+                    
+                try:
+                    inputs = processor(text=batch, return_tensors="pt", padding=True, truncation=True)
+                    with torch.no_grad():
+                        outputs = model.get_text_features(**inputs)
+                    
+                    # Normalize embeddings
+                    # Handle Transformers Output object if necessary
+                    if not isinstance(outputs, torch.Tensor):
+                        if hasattr(outputs, 'text_embeds'):
+                            outputs = outputs.text_embeds
+                        elif hasattr(outputs, 'pooler_output'):
+                            outputs = outputs.pooler_output
+                        elif hasattr(outputs, 'last_hidden_state'):
+                            # Mean pooling if we get raw hidden states
+                            outputs = outputs.last_hidden_state.mean(dim=1)
+                    
+                    outputs = outputs / outputs.norm(dim=-1, keepdim=True)
+                    all_embeddings.append(outputs)
+                except Exception as e:
+                    print(f"Error processing batch {i}: {e}")
+                    # Append zeros to keep alignment
+                    all_embeddings.append(torch.zeros((len(batch), 512)))
+                    
+            if all_embeddings:
+                final_embeddings = torch.cat(all_embeddings, dim=0).numpy()
+                np.save(embeddings_path, final_embeddings)
+                print(f"✅ Saved 'product_embeddings.npy' with shape {final_embeddings.shape}")
+            else:
+                print("❌ Failed to generate any embeddings.")
+                
+        except ImportError:
+            print("❌ 'transformers' library not found. Please run 'pip install transformers'.")
+        except Exception as e:
+            print(f"❌ Error generating embeddings: {e}")
 
     # 3. Generate Color Histograms (Placeholder)
     print("\n[2/2] Generating Color Histograms (Placeholder)...")
