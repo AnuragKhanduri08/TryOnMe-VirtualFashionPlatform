@@ -55,31 +55,40 @@ def load_data():
     embeddings_path = os.path.join(base_dir, "product_embeddings.npy")
     histograms_path = os.path.join(base_dir, "product_histograms.npy")
     
+    print("--- START DATA LOADING ---")
+    
+    # Priority: DB -> JSON
     try:
-        print("Loading products from Database...")
+        print("Attempting to load products from Database...")
         db = SessionLocal()
         try:
             db_products = db.query(Product).order_by(Product.id).all()
-            products = [p.to_dict() for p in db_products]
-            print(f"Loaded {len(products)} products from DB.")
-            
-            if not products:
-                print("Database is empty. Attempting fallback to products.json...")
+            if db_products and len(db_products) > 0:
+                products = [p.to_dict() for p in db_products]
+                print(f"✅ Loaded {len(products)} products from Database.")
+            else:
+                print("⚠️ Database returned 0 products.")
                 raise Exception("DB Empty")
                 
         except Exception as e:
-            print(f"DB Load failed: {e}. Falling back to products.json")
+            print(f"⚠️ DB Load failed/skipped: {e}. Falling back to products.json...")
             # Fallback to JSON if DB fails or empty
-            with open(products_path, "r") as f:
-                products = json.load(f)
-            print(f"Loaded {len(products)} products from JSON.")
+            if os.path.exists(products_path):
+                with open(products_path, "r") as f:
+                    products = json.load(f)
+                print(f"✅ Loaded {len(products)} products from JSON ({products_path}).")
+            else:
+                print(f"❌ products.json NOT FOUND at {products_path}!")
+                products = []
             
         finally:
             db.close()
             
     except Exception as e:
-        print(f"Error loading products: {e}")
+        print(f"❌ Critical Error loading products: {e}")
         products = []
+        
+    print(f"📊 Final Product Count in Memory: {len(products)}")
 
     try:
         if os.path.exists(embeddings_path):
