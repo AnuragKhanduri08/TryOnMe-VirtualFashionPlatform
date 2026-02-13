@@ -9,9 +9,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from contextlib import asynccontextmanager
 
 import numpy as np
-import cv2
 from PIL import Image
-import torch
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,26 +29,6 @@ Base.metadata.create_all(bind=engine)
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import AI Engines
-# NOTE: We lazy load these in the lifespan startup event to prevent timeouts during deployment
-SmartSearchEngine = None
-BodyMeasurementEstimator = None
-VirtualTryOnEngine = None
-
-try:
-    print("Importing AI Modules (Lazy Load Wrappers)...")
-    from ai_modules.smart_search.engine import SmartSearchEngine as SSE
-    SmartSearchEngine = SSE
-    
-    from ai_modules.body_measurement.estimator import BodyMeasurementEstimator as BME
-    BodyMeasurementEstimator = BME
-    
-    from ai_modules.virtual_try_on.engine import VirtualTryOnEngine as VTO
-    VirtualTryOnEngine = VTO
-    print("AI Modules imported successfully.")
-except ImportError as e:
-    print(f"Warning: AI Module import failed: {e}")
 
 # Global Variables
 products = []
@@ -120,9 +98,10 @@ def load_data():
 # Helper: Lazy Loaders
 def get_search_engine():
     global search_engine
-    if search_engine is None and SmartSearchEngine:
+    if search_engine is None:
         try:
             print("Lazy Loading Search Engine...")
+            from ai_modules.smart_search.engine import SmartSearchEngine
             search_engine = SmartSearchEngine()
             print("Search Engine loaded.")
         except Exception as e:
@@ -131,9 +110,10 @@ def get_search_engine():
 
 def get_body_estimator():
     global body_estimator
-    if body_estimator is None and BodyMeasurementEstimator:
+    if body_estimator is None:
         try:
             print("Lazy Loading Body Estimator...")
+            from ai_modules.body_measurement.estimator import BodyMeasurementEstimator
             body_estimator = BodyMeasurementEstimator()
             print("Body Estimator loaded.")
         except Exception as e:
@@ -142,9 +122,10 @@ def get_body_estimator():
 
 def get_tryon_engine():
     global tryon_engine
-    if tryon_engine is None and VirtualTryOnEngine:
+    if tryon_engine is None:
         try:
             print("Lazy Loading Try-On Engine...")
+            from ai_modules.virtual_try_on.engine import VirtualTryOnEngine
             tryon_engine = VirtualTryOnEngine()
             print("Try-On Engine loaded.")
         except Exception as e:
@@ -240,11 +221,10 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.get("/")
 async def health_check():
     # Health check should be fast. Don't trigger loading here unless necessary.
-    # Just check if modules are importable.
     return {"status": "ok", "services": {
-        "search": SmartSearchEngine is not None,
-        "body_measurement": BodyMeasurementEstimator is not None,
-        "virtual_try_on": VirtualTryOnEngine is not None,
+        "search": search_engine is not None,
+        "body_measurement": body_estimator is not None,
+        "virtual_try_on": tryon_engine is not None,
         "products_loaded": len(products)
     }}
 
@@ -323,10 +303,10 @@ async def search(
     results = []
     
     # 1. AI Search (CLIP)
-    # Lazy load search engine
-    engine = get_search_engine()
-    if use_ai and engine and engine.model is not None and product_embeddings is not None:
-        try:
+    if use_ai:
+        engine = get_search_engine()
+        if engine and engine.model is not None and product_embeddings is not None:
+            try:
             # Fetch more candidates to allow for diversity reranking (3x limit)
             search_limit = limit * 3
             
@@ -439,6 +419,7 @@ async def measure_body(
         raise HTTPException(status_code=503, detail="Body measurement estimator not initialized")
     
     try:
+        import cv2
         # Read image
         contents = await file.read()
         
@@ -675,6 +656,7 @@ async def segment_image(
          raise HTTPException(status_code=503, detail="Try-On engine not initialized")
     
     try:
+        import cv2
         image_np = None
         
         if cloth_id:
@@ -734,6 +716,7 @@ async def virtual_try_on(
         raise HTTPException(status_code=503, detail="Services not initialized")
     
     try:
+        import cv2
         # Read Person Image
         person_bytes = await person_image.read()
         nparr_person = np.frombuffer(person_bytes, np.uint8)
