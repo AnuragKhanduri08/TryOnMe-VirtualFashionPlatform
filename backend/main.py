@@ -117,6 +117,40 @@ def load_data():
     except Exception as e:
         print(f"Error loading data: {e}")
 
+# Helper: Lazy Loaders
+def get_search_engine():
+    global search_engine
+    if search_engine is None and SmartSearchEngine:
+        try:
+            print("Lazy Loading Search Engine...")
+            search_engine = SmartSearchEngine()
+            print("Search Engine loaded.")
+        except Exception as e:
+            print(f"Failed to load Search Engine: {e}")
+    return search_engine
+
+def get_body_estimator():
+    global body_estimator
+    if body_estimator is None and BodyMeasurementEstimator:
+        try:
+            print("Lazy Loading Body Estimator...")
+            body_estimator = BodyMeasurementEstimator()
+            print("Body Estimator loaded.")
+        except Exception as e:
+            print(f"Failed to load Body Estimator: {e}")
+    return body_estimator
+
+def get_tryon_engine():
+    global tryon_engine
+    if tryon_engine is None and VirtualTryOnEngine:
+        try:
+            print("Lazy Loading Try-On Engine...")
+            tryon_engine = VirtualTryOnEngine()
+            print("Try-On Engine loaded.")
+        except Exception as e:
+            print(f"Failed to load Try-On Engine: {e}")
+    return tryon_engine
+
 # Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -126,38 +160,8 @@ async def lifespan(app: FastAPI):
     # 1. Load Lightweight Data (Instant)
     load_data()
     
-    global search_engine, body_estimator, tryon_engine
-    
-    # 2. Lazy Load Heavy AI Engines in Background (if possible) or just sequentially here
-    # Render expects the port to be open FAST.
-    # But uvicorn startup finishes AFTER lifespan startup.
-    # Ideally, we should initialize these variables but NOT load the heavy models yet if possible.
-    # However, since we pre-downloaded models, loading them might be faster now.
-    # Let's try loading them here but catch errors to avoid crashing.
-    
-    if SmartSearchEngine:
-        try:
-            print("Initializing Search Engine...")
-            search_engine = SmartSearchEngine()
-            print("Search Engine initialized.")
-        except Exception as e:
-            print(f"Failed to init Search Engine: {e}")
-
-    if BodyMeasurementEstimator:
-        try:
-            print("Initializing Body Measurement Estimator...")
-            body_estimator = BodyMeasurementEstimator()
-            print("Body Measurement Estimator initialized.")
-        except Exception as e:
-            print(f"Failed to init Body Estimator: {e}")
-
-    if VirtualTryOnEngine:
-        try:
-            print("Initializing Virtual Try-On Engine...")
-            tryon_engine = VirtualTryOnEngine()
-            print("Virtual Try-On Engine initialized.")
-        except Exception as e:
-            print(f"Failed to init Try-On Engine: {e}")
+    # NOTE: NO HEAVY MODEL LOADING HERE!
+    # Models will be loaded on-demand (lazy) inside endpoints.
             
     yield
     # Shutdown
@@ -235,10 +239,12 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")
 async def health_check():
+    # Health check should be fast. Don't trigger loading here unless necessary.
+    # Just check if modules are importable.
     return {"status": "ok", "services": {
-        "search": search_engine is not None,
-        "body_measurement": body_estimator is not None,
-        "virtual_try_on": tryon_engine is not None,
+        "search": SmartSearchEngine is not None,
+        "body_measurement": BodyMeasurementEstimator is not None,
+        "virtual_try_on": VirtualTryOnEngine is not None,
         "products_loaded": len(products)
     }}
 
@@ -317,13 +323,15 @@ async def search(
     results = []
     
     # 1. AI Search (CLIP)
-    if use_ai and search_engine and search_engine.model is not None and product_embeddings is not None:
+    # Lazy load search engine
+    engine = get_search_engine()
+    if use_ai and engine and engine.model is not None and product_embeddings is not None:
         try:
             # Fetch more candidates to allow for diversity reranking (3x limit)
             search_limit = limit * 3
             
             # search_engine.search returns (values, indices)
-            search_res = search_engine.search(q, product_embeddings, top_k=search_limit)
+            search_res = engine.search(q, product_embeddings, top_k=search_limit)
             indices = search_res[1]
             if hasattr(indices, 'cpu'):
                 indices = indices.cpu().numpy()
@@ -383,7 +391,8 @@ async def search_by_image(file: UploadFile = File(...), limit: int = 20):
     """
     Semantic search using an image (Image-to-Text).
     """
-    if not search_engine:
+    engine = get_search_engine()
+    if not engine:
         raise HTTPException(status_code=503, detail="Search engine not initialized")
     
     try:
@@ -394,11 +403,11 @@ async def search_by_image(file: UploadFile = File(...), limit: int = 20):
         # Perform search
         # Pass product_histograms if available (global variable)
         ph = product_histograms if 'product_histograms' in globals() else None
-        results = search_engine.search(image, product_embeddings, product_histograms=ph, top_k=limit)
+        results = engine.search(image, product_embeddings, product_histograms=ph, top_k=limit)
         
         search_results = []
         
-        if search_engine.model is None:
+        if engine.model is None:
             # Histogram search returns list of (pid, score)
             for pid, score in results:
                 prod = next((p for p in products if p["id"] == pid), None)
@@ -425,7 +434,8 @@ async def measure_body(
     """
     Estimate body measurements from an uploaded image.
     """
-    if not body_estimator:
+    estimator = get_body_estimator()
+    if not estimator:
         raise HTTPException(status_code=503, detail="Body measurement estimator not initialized")
     
     try:
@@ -441,7 +451,7 @@ async def measure_body(
 
         # Perform estimation
         # Pass user provided height to estimator
-        results = body_estimator.estimate_from_image(image_np, user_height_cm=height)
+        results = estimator.estimate_from_image(image_np, user_height_cm=height)
         
         if results.get("status") == "error":
             # We can decide to return 200 with error info or 400. 
@@ -469,7 +479,8 @@ def recommend_products(product_id: int, limit: int = 20):
     similar_items = []
     
     # Try Semantic Similarity first (if available)
-    if search_engine and search_engine.model is not None and product_embeddings is not None:
+    engine = get_search_engine()
+    if engine and engine.model is not None and product_embeddings is not None:
         try:
             # Find index of source product
             # Assuming product_embeddings aligns exactly with products list
@@ -478,7 +489,7 @@ def recommend_products(product_id: int, limit: int = 20):
             if source_idx is not None:
                 source_embedding = product_embeddings[source_idx]
                 # Search
-                results = search_engine.search_by_embedding(source_embedding, product_embeddings, top_k=limit+1)
+                results = engine.search_by_embedding(source_embedding, product_embeddings, top_k=limit+1)
                 
                 # Extract products (excluding self)
                 # results is (values, indices)
@@ -659,7 +670,8 @@ async def segment_image(
     """
     Remove background from an image.
     """
-    if not tryon_engine:
+    engine = get_tryon_engine()
+    if not engine:
          raise HTTPException(status_code=503, detail="Try-On engine not initialized")
     
     try:
@@ -682,7 +694,7 @@ async def segment_image(
         # Use default "upper" cloth type or infer? 
         # The user requested specific segmentation for shirts in manual mode (which uses try-on),
         # but this is the /segment endpoint. Let's default to "upper" as it's the most common use case.
-        segmented = tryon_engine.segment_cloth(image_np, cloth_type="upper")
+        segmented = engine.segment_cloth(image_np, cloth_type="upper")
         
         # Return as PNG
         success, encoded_image = cv2.imencode('.png', segmented)
@@ -715,7 +727,10 @@ async def virtual_try_on(
     use_cloud_bool = str(use_cloud).lower() == 'true'
     print(f"Try-On Request: use_cloud_bool={use_cloud_bool}")
 
-    if not tryon_engine or not body_estimator:
+    vto_engine = get_tryon_engine()
+    bme_estimator = get_body_estimator()
+
+    if not vto_engine or not bme_estimator:
         raise HTTPException(status_code=503, detail="Services not initialized")
     
     try:
@@ -777,7 +792,7 @@ async def virtual_try_on(
              raise HTTPException(status_code=400, detail="Invalid image data")
 
         # Get Pose Keypoints (Required even for Cloud as a fallback check or for future hybrid logic)
-        pose_result = body_estimator.estimate_from_image(person_np)
+        pose_result = bme_estimator.estimate_from_image(person_np)
         
         # If pose detection fails, we might still want to try cloud if enabled, 
         # but usually pose failure means bad image.
@@ -792,7 +807,7 @@ async def virtual_try_on(
             "y": adj_y
         }
         
-        result_np = tryon_engine.try_on(person_np, cloth_np, keypoints, adjustments=adjustments, use_cloud=use_cloud_bool, hf_token=hf_token)
+        result_np = vto_engine.try_on(person_np, cloth_np, keypoints, adjustments=adjustments, use_cloud=use_cloud_bool, hf_token=hf_token)
         
         if result_np is None:
              raise HTTPException(status_code=500, detail="Try-On generated no result.")
