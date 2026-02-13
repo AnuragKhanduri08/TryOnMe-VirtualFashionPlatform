@@ -26,6 +26,8 @@ interface Product {
     id: string | number
     name: string
     category: string
+    subCategory?: string
+    masterCategory?: string
     image_url: string
     price?: number
     gender?: string
