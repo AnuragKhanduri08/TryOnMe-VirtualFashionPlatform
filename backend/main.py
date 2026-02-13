@@ -244,7 +244,7 @@ async def health_check():
         "search": search_engine is not None,
         "body_measurement": body_estimator is not None,
         "virtual_try_on": tryon_engine is not None,
-        "products_loaded": len(products)
+        "products_loaded": len(product_ids)
     }}
 
 @app.get("/products")
@@ -255,26 +255,44 @@ async def get_products(
     subCategory: Optional[str] = None,
     masterCategory: Optional[str] = None
 ):
-    filtered_products = products
-    
-    if gender:
-        # Simple case-insensitive match for gender
-        filtered_products = [p for p in filtered_products if p.get("gender", "").lower() == gender.lower()]
-    
-    if category:
-        filtered_products = [p for p in filtered_products if p.get("category", "").lower() == category.lower() or p.get("articleType", "").lower() == category.lower()]
+    db = SessionLocal()
+    try:
+        query = db.query(Product)
         
-    if subCategory:
-        filtered_products = [p for p in filtered_products if p.get("subCategory", "").lower() == subCategory.lower()]
+        if gender:
+            query = query.filter(func.lower(Product.gender) == gender.lower())
+        
+        if category:
+            # Check both category and articleType columns
+            query = query.filter(or_(
+                func.lower(Product.category) == category.lower(),
+                func.lower(Product.articleType) == category.lower()
+            ))
+            
+        if subCategory:
+            query = query.filter(func.lower(Product.subCategory) == subCategory.lower())
 
-    if masterCategory:
-        filtered_products = [p for p in filtered_products if p.get("masterCategory", "").lower() == masterCategory.lower()]
-    
-    # Shuffle results to show variety
-    import random
-    random.shuffle(filtered_products)
-    
-    return {"results": filtered_products[:limit], "total": len(filtered_products)}
+        if masterCategory:
+            query = query.filter(func.lower(Product.masterCategory) == masterCategory.lower())
+        
+        # Efficient Random Sort using DB random() or ID desc
+        if limit <= 100:
+             query = query.order_by(func.random())
+        else:
+             query = query.order_by(Product.id)
+        
+        results = query.limit(limit).all()
+        
+        # Convert to dict
+        final_products = [p.to_dict() for p in results]
+        
+        return {"results": final_products, "total": len(final_products)}
+        
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+        return {"results": [], "total": 0}
+    finally:
+        db.close()
 
 # Helper: Diversify Results
 def diversify_results(results: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
@@ -316,15 +334,13 @@ async def search(
     """
     Text search for products.
     """
-    if not products:
-        raise HTTPException(status_code=503, detail="Product data not loaded")
-        
     results = []
     
     # 1. AI Search (CLIP)
     if use_ai:
         engine = get_search_engine()
-        if engine and engine.model is not None and product_embeddings is not None:
+        # Check if engine loaded AND we have embeddings AND we have IDs to map to
+        if engine and engine.model is not None and product_embeddings is not None and product_ids:
             try:
                 # Fetch more candidates to allow for diversity reranking (3x limit)
                 search_limit = limit * 3
@@ -335,55 +351,72 @@ async def search(
                 if hasattr(indices, 'cpu'):
                     indices = indices.cpu().numpy()
                 
-                candidates = []
+                # Map Indices -> DB IDs
+                found_db_ids = []
                 for idx in indices:
                     idx_val = int(idx)
-                    if idx_val < len(products):
-                        candidates.append(products[idx_val])
+                    if idx_val < len(product_ids):
+                        found_db_ids.append(product_ids[idx_val])
                 
-                # Apply Diversity Reranking
-                results = diversify_results(candidates, limit)
-                
-                return {"query": q, "results": results, "method": "ai_diversified"}
+                # Fetch full objects from DB
+                if found_db_ids:
+                    db = SessionLocal()
+                    try:
+                        # Fetch in one query
+                        db_results = db.query(Product).filter(Product.id.in_(found_db_ids)).all()
+                        db_map = {p.id: p.to_dict() for p in db_results}
+                        
+                        candidates = []
+                        for pid in found_db_ids:
+                            if pid in db_map:
+                                candidates.append(db_map[pid])
+                                
+                        # Apply Diversity Reranking
+                        results = diversify_results(candidates, limit)
+                        return {"query": q, "results": results, "method": "ai_diversified"}
+                    finally:
+                        db.close()
+                        
             except Exception as e:
                 print(f"AI Search failed: {e}")
                 # Fallback to keyword
             
-    # 2. Keyword Fallback
-    q_lower = q.lower()
-    keyword_candidates = []
-    for p in products:
-        if q_lower in p["name"].lower() or q_lower in p.get("articleType", "").lower():
-            keyword_candidates.append(p)
-            # Fetch enough for diversity
-            if len(keyword_candidates) >= limit * 3:
-                break
-    
-    # Apply Diversity Reranking
-    results = diversify_results(keyword_candidates, limit)
-                
-    return {"query": q, "results": results, "method": "keyword_diversified"}
+    # 2. Keyword Fallback (Database ILIKE)
+    db = SessionLocal()
+    try:
+        q_lower = f"%{q}%"
+        query = db.query(Product).filter(or_(
+            Product.name.ilike(q_lower),
+            Product.articleType.ilike(q_lower),
+            Product.category.ilike(q_lower)
+        ))
+        
+        # Limit result for diversity processing
+        keyword_candidates = query.limit(limit * 3).all()
+        candidates_dicts = [p.to_dict() for p in keyword_candidates]
+        
+        # Apply Diversity Reranking
+        results = diversify_results(candidates_dicts, limit)
+                    
+        return {"query": q, "results": results, "method": "keyword_diversified"}
+    except Exception as e:
+        print(f"Keyword search failed: {e}")
+        return {"query": q, "results": [], "method": "error"}
+    finally:
+        db.close()
 
 @app.get("/search/suggestions")
 def get_suggestions(q: str, limit: int = 5):
-    if not products:
+    db = SessionLocal()
+    try:
+        q_lower = f"%{q}%"
+        results = db.query(Product.name).filter(Product.name.ilike(q_lower)).limit(limit).all()
+        suggestions = [r[0] for r in results]
+        return {"query": q, "suggestions": suggestions}
+    except Exception as e:
         return {"query": q, "suggestions": []}
-        
-    q_lower = q.lower()
-    suggestions = []
-    seen = set()
-    
-    # Simple substring match
-    for p in products:
-        name = p["name"]
-        if q_lower in name.lower():
-            if name not in seen:
-                suggestions.append(name)
-                seen.add(name)
-            if len(suggestions) >= limit:
-                break
-                
-    return {"query": q, "suggestions": suggestions}
+    finally:
+        db.close()
 
 @app.post("/search/image")
 async def search_by_image(file: UploadFile = File(...), limit: int = 20):
@@ -404,21 +437,41 @@ async def search_by_image(file: UploadFile = File(...), limit: int = 20):
         ph = product_histograms if 'product_histograms' in globals() else None
         results = engine.search(image, product_embeddings, product_histograms=ph, top_k=limit)
         
-        search_results = []
+        found_db_ids = []
+        scores = {}
         
         if engine.model is None:
-            # Histogram search returns list of (pid, score)
-            for pid, score in results:
-                prod = next((p for p in products if p["id"] == pid), None)
-                if prod:
-                    # Add score to result for debugging
-                    prod_copy = prod.copy()
-                    prod_copy["score"] = float(score)
-                    search_results.append(prod_copy)
+            # Histogram search returns list of (pid_index, score)
+            # Standard implementation usually returns indices into the array passed.
+            for idx, score in results:
+                idx_val = int(idx)
+                if idx_val < len(product_ids):
+                    pid = product_ids[idx_val]
+                    found_db_ids.append(pid)
+                    scores[pid] = float(score)
         else:
             # Embedding search returns (values, indices)
             for idx in results[1]:
-                search_results.append(products[idx.item()])
+                idx_val = int(idx)
+                if idx_val < len(product_ids):
+                    found_db_ids.append(product_ids[idx_val])
+        
+        # Fetch from DB
+        search_results = []
+        if found_db_ids:
+            db = SessionLocal()
+            try:
+                db_results = db.query(Product).filter(Product.id.in_(found_db_ids)).all()
+                db_map = {p.id: p.to_dict() for p in db_results}
+                
+                for pid in found_db_ids:
+                    if pid in db_map:
+                        item = db_map[pid]
+                        if pid in scores:
+                            item["score"] = scores[pid]
+                        search_results.append(item)
+            finally:
+                db.close()
             
         return {"query": "image_upload", "results": search_results}
         
@@ -771,28 +824,31 @@ async def virtual_try_on(
             if os.path.exists(cloth_path):
                  cloth_np = cv2.imread(cloth_path, cv2.IMREAD_UNCHANGED)
             else:
-                 # Check if we have the URL in products list
-                 product = next((p for p in products if str(p["id"]) == str(cloth_id)), None)
-                 if product and "image_url" in product:
-                     try:
-                         print(f"Downloading image for {cloth_id} from {product['image_url']}...")
-                         import requests
-                         # Use a user agent to avoid 403s
-                         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                         resp = requests.get(product["image_url"], headers=headers, timeout=10)
-                         if resp.status_code == 200:
-                             # Convert to numpy
-                             image_bytes = np.frombuffer(resp.content, np.uint8)
-                             cloth_np = cv2.imdecode(image_bytes, cv2.IMREAD_UNCHANGED)
-                             
-                             # Cache it locally
-                             if cloth_np is not None:
-                                 cv2.imwrite(cloth_path, cloth_np)
-                                 print(f"Cached image to {cloth_path}")
-                         else:
-                             print(f"Failed to download image: {resp.status_code}")
-                     except Exception as e:
-                         print(f"Error downloading image: {e}")
+                 # Check if we have the URL in DB (refactored from products list)
+                 db = SessionLocal()
+                 try:
+                     product = db.query(Product).filter(Product.id == cloth_id).first()
+                     if product and product.image_url:
+                         try:
+                             print(f"Downloading image for {cloth_id} from {product.image_url}...")
+                             import requests
+                             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                             resp = requests.get(product.image_url, headers=headers, timeout=10)
+                             if resp.status_code == 200:
+                                 # Convert to numpy
+                                 image_bytes = np.frombuffer(resp.content, np.uint8)
+                                 cloth_np = cv2.imdecode(image_bytes, cv2.IMREAD_UNCHANGED)
+                                 
+                                 # Cache it locally
+                                 if cloth_np is not None:
+                                     cv2.imwrite(cloth_path, cloth_np)
+                                     print(f"Cached image to {cloth_path}")
+                             else:
+                                 print(f"Failed to download image: {resp.status_code}")
+                         except Exception as e:
+                             print(f"Error downloading image: {e}")
+                 finally:
+                     db.close()
 
                  if cloth_np is None:
                      raise HTTPException(status_code=404, detail=f"Product image for ID {cloth_id} not found locally or remotely")
