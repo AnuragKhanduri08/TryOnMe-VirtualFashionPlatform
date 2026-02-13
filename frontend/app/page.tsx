@@ -143,9 +143,20 @@ export default function Home() {
       
       console.log("HomePage: Fetching URL:", url)
       const res = await axios.get(url)
+      
+      console.log("HomePage: Full API Response:", res.data) // DEBUG LOG
+      
       // Search endpoint returns { results: [...] }, products endpoint returns [...]
       const data = res.data.results || res.data
-      setProducts(Array.isArray(data) ? data : [])
+      
+      if (Array.isArray(data)) {
+          console.log(`HomePage: Parsed ${data.length} products`)
+          setProducts(data)
+      } else {
+          console.error("HomePage: API returned non-array data", data)
+          setProducts([])
+      }
+      
       setErrorMsg("") // Clear error on success
     } catch (error: any) {
       console.error("Failed to fetch products", error)

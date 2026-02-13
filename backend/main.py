@@ -145,7 +145,7 @@ def get_tryon_engine():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("Starting up...")
+    print("Starting up... (Force Redeploy)")
     
     # 1. Load Lightweight Data (Instant)
     load_data()
