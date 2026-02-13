@@ -45,14 +45,17 @@ def migrate_to_db():
         existing_count = db.query(Product).count()
         if existing_count > 0:
             print(f"⚠️ Database already contains {existing_count} products.")
-            choice = input("Do you want to clear existing data and re-import? (y/n): ").lower()
-            if choice == 'y':
-                print("Clearing existing data...")
+            
+            # Check for FORCE_MIGRATE env var
+            force_migrate = os.getenv("FORCE_MIGRATE", "false").lower() == "true"
+            
+            if force_migrate:
+                print("FORCE_MIGRATE=true detected. Clearing existing data...")
                 db.query(Product).delete()
                 db.commit()
                 print("Existing data cleared.")
             else:
-                print("Skipping import to avoid duplicates.")
+                print("Skipping import to avoid duplicates. (Set FORCE_MIGRATE=true to overwrite)")
                 return
 
         # Bulk Insert
