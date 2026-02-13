@@ -83,6 +83,16 @@ def setup_ai_models():
                     outputs = model.get_text_features(**inputs)
                 
                 # Normalize embeddings
+                # Handle Transformers Output object if necessary
+                if not isinstance(outputs, torch.Tensor):
+                    if hasattr(outputs, 'text_embeds'):
+                        outputs = outputs.text_embeds
+                    elif hasattr(outputs, 'pooler_output'):
+                        outputs = outputs.pooler_output
+                    elif hasattr(outputs, 'last_hidden_state'):
+                        # Mean pooling if we get raw hidden states
+                        outputs = outputs.last_hidden_state.mean(dim=1)
+                
                 outputs = outputs / outputs.norm(dim=-1, keepdim=True)
                 all_embeddings.append(outputs)
             except Exception as e:
