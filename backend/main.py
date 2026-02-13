@@ -90,16 +90,34 @@ def load_data():
         
     print(f"📊 Final Product Count in Memory: {len(products)}")
 
+    # LIMIT DATA FOR FREE TIER STABILITY
+    # Render Free Tier has 512MB RAM. 44k products + embeddings + torch is too much.
+    MAX_PRODUCTS = 1000
+    if len(products) > MAX_PRODUCTS:
+        print(f"⚠️ Limiting data to {MAX_PRODUCTS} items to prevent Out-Of-Memory on Free Tier.")
+        products = products[:MAX_PRODUCTS]
+        print(f"✅ New Product Count: {len(products)}")
+
     try:
         if os.path.exists(embeddings_path):
             print("Loading product_embeddings.npy...")
-            product_embeddings = np.load(embeddings_path)
+            loaded_embeddings = np.load(embeddings_path)
+            # Slice embeddings to match products
+            if len(loaded_embeddings) > len(products):
+                 product_embeddings = loaded_embeddings[:len(products)]
+            else:
+                 product_embeddings = loaded_embeddings
             print(f"Loaded embeddings: {product_embeddings.shape}")
         else:
             print("product_embeddings.npy not found.")
             
         if os.path.exists(histograms_path):
-            product_histograms = np.load(histograms_path)
+            loaded_histograms = np.load(histograms_path)
+            # Slice histograms to match products
+            if len(loaded_histograms) > len(products):
+                 product_histograms = loaded_histograms[:len(products)]
+            else:
+                 product_histograms = loaded_histograms
             print(f"Loaded histograms: {product_histograms.shape}")
     except Exception as e:
         print(f"Error loading data: {e}")
