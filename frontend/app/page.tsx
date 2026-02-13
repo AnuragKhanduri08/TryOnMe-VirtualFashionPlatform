@@ -463,7 +463,7 @@ export default function Home() {
         {currentView === "shop" && (
             <div className="container px-4 py-8">
                 {/* Hero / Brand Showcase (Only when All categories selected and no search) */}
-                {selectedCategory === "All" && searchQuery === "" && !loading && showHero && (
+                {selectedCategory === "All" && searchQuery === "" && showHero && (
                     <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Carousel Hero */}
                         <div className="relative w-full h-[400px] rounded-2xl overflow-hidden mb-8 group">
@@ -532,7 +532,7 @@ export default function Home() {
                 )}
 
                 {/* Shop by Category (Roundels) - Only on Home View */}
-                {selectedCategory === "All" && searchQuery === "" && !loading && (
+                {selectedCategory === "All" && searchQuery === "" && (
                     <div className="mb-12">
                         <h2 className="text-2xl font-bold mb-6 tracking-tight">Shop by Category</h2>
                         <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide">
@@ -612,8 +612,14 @@ export default function Home() {
                 )}
 
                 {/* Home Page Sections (Horizontal Rails) */}
-                {selectedCategory === "All" && searchQuery === "" && !loading ? (
-                    <div className="space-y-12">
+                {selectedCategory === "All" && searchQuery === "" ? (
+                    <div className="space-y-12 relative min-h-[50vh]">
+                        {loading && (
+                            <div className="absolute inset-0 z-10 bg-background/50 backdrop-blur-[1px] flex items-center justify-center">
+                                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                            </div>
+                        )}
+
                         {/* Section 1: Trending Topwear */}
                         <div>
                             <div className="flex items-center justify-between mb-4">
@@ -691,22 +697,26 @@ export default function Home() {
                             <div key={i} className="aspect-[3/4] bg-muted/30 animate-pulse rounded-xl" />
                         ))}
                     </div>
-                ) : products.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                        {products.map((product) => (
-                            <ProductCard 
-                                key={product.id} 
-                                product={product} 
-                                onTryOn={handleTryOn} 
-                                onClick={handleProductClick}
-                                onSimilar={handleSimilar}
-                            />
-                        ))}
-                    </div>
                 ) : (
-                    <div className="text-center py-20 text-muted-foreground">
-                        <p className="text-lg">No products found for this category.</p>
-                        <Button variant="link" onClick={() => setSelectedCategory("All")}>Clear Filters</Button>
+                    <div className="min-h-[50vh]">
+                        {products.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                                {products.map((product) => (
+                                    <ProductCard 
+                                        key={product.id} 
+                                        product={product} 
+                                        onTryOn={handleTryOn} 
+                                        onClick={handleProductClick}
+                                        onSimilar={handleSimilar}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-20 text-muted-foreground">
+                                <p className="text-lg">No products found for this category.</p>
+                                <Button variant="link" onClick={() => setSelectedCategory("All")}>Clear Filters</Button>
+                            </div>
+                        )}
                     </div>
                 )
                 )}
