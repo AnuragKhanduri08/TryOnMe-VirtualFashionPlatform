@@ -459,180 +459,199 @@ def recommend_products(product_id: int, limit: int = 20):
     """
     Recommend similar products based on metadata and 'Complete the Look' matching.
     """
-    # Find product
-    source_product = next((p for p in products if p["id"] == product_id), None)
-            
-    if not source_product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    try:
+        print(f"Recommend Request for Product ID: {product_id}")
         
-    # --- 1. Find Similar Items ---
-    similar_items = []
-    
-    # Try Semantic Similarity first (if available)
-    engine = get_search_engine()
-    if engine and engine.model is not None and product_embeddings is not None:
-        try:
-            # Find index of source product
-            # Assuming product_embeddings aligns exactly with products list
-            source_idx = next((i for i, p in enumerate(products) if p["id"] == product_id), None)
+        # Find product
+        source_product = next((p for p in products if p["id"] == product_id), None)
+                
+        if not source_product:
+            raise HTTPException(status_code=404, detail="Product not found")
             
-            if source_idx is not None:
-                source_embedding = product_embeddings[source_idx]
-                # Search
-                results = engine.search_by_embedding(source_embedding, product_embeddings, top_k=limit+1)
+        # --- 1. Find Similar Items ---
+        similar_items = []
+        
+        # Try Semantic Similarity first (if available)
+        engine = get_search_engine()
+        if engine and engine.model is not None and product_embeddings is not None:
+            try:
+                # Find index of source product
+                # Assuming product_embeddings aligns exactly with products list
+                # This assumption might be risky if lists drift, but okay for now if static
+                source_idx = next((i for i, p in enumerate(products) if p["id"] == product_id), None)
                 
-                # Extract products (excluding self)
-                # results is (values, indices)
-                # Ensure we handle torch tensor or numpy array output from search_by_embedding
-                indices = results[1]
-                if hasattr(indices, 'cpu'):
-                    indices = indices.cpu().numpy()
-                
-                for idx in indices:
-                    idx_val = int(idx) # Ensure integer
-                    if idx_val != source_idx and idx_val < len(products):
-                        similar_items.append(products[idx_val])
-                
-                # Limit
-                similar_items = similar_items[:limit]
-        except Exception as e:
-            print(f"Error in semantic recommendation: {e}")
-            similar_items = []
+                if source_idx is not None:
+                    source_embedding = product_embeddings[source_idx]
+                    # Search
+                    results = engine.search_by_embedding(source_embedding, product_embeddings, top_k=limit+1)
+                    
+                    # Extract products (excluding self)
+                    # results is (values, indices)
+                    # Ensure we handle torch tensor or numpy array output from search_by_embedding
+                    indices = results[1]
+                    if hasattr(indices, 'cpu'):
+                        indices = indices.cpu().numpy()
+                    elif hasattr(indices, 'numpy'):
+                        indices = indices.numpy()
+                    
+                    for idx in indices:
+                        # Handle scalar numpy types or tensors
+                        idx_val = int(idx.item()) if hasattr(idx, 'item') else int(idx)
+                        
+                        if idx_val != source_idx and idx_val < len(products):
+                            similar_items.append(products[idx_val])
+                    
+                    # Limit
+                    similar_items = similar_items[:limit]
+                    print(f"Found {len(similar_items)} similar items via AI.")
+            except Exception as e:
+                print(f"Error in semantic recommendation: {e}")
+                similar_items = []
 
-    # Fallback to Metadata Similarity if Semantic failed or returned nothing
-    if not similar_items:
-        # Strategy: Same Gender, Same Category, Same/Similar Color
+        # Fallback to Metadata Similarity if Semantic failed or returned nothing
+        if not similar_items:
+            print("Fallback to metadata similarity...")
+            # Strategy: Same Gender, Same Category, Same/Similar Color
+            candidates = [p for p in products if p["id"] != product_id and p.get("gender") == source_product.get("gender")]
+            
+            # Scoring for Similarity
+            scored_similar = []
+            for p in candidates:
+                score = 0
+                # Category Match (High Priority)
+                if p.get("articleType") == source_product.get("articleType"):
+                    score += 20
+                elif p.get("subCategory") == source_product.get("subCategory"):
+                    score += 10
+                    
+                # Color Match
+                if p.get("baseColour") == source_product.get("baseColour"):
+                    score += 15
+                    
+                # Usage/Season Match
+                if p.get("usage") == source_product.get("usage"):
+                    score += 5
+                if p.get("season") == source_product.get("season"):
+                    score += 5
+                    
+                scored_similar.append((score, p))
+                
+            # Sort by score desc
+            scored_similar.sort(key=lambda x: x[0], reverse=True)
+            similar_items = [x[1] for x in scored_similar[:limit]]
+        
+        # --- 2. Find Matching Items (Outfit Completion) ---
+        # Strategy: Same Gender, Complementary Category, Compatible Color
+        
         candidates = [p for p in products if p["id"] != product_id and p.get("gender") == source_product.get("gender")]
         
-        # Scoring for Similarity
-        scored_similar = []
+        source_sub = source_product.get("subCategory")
+        target_subs = []
+        
+        # Enforce strict complementary rules
+        if source_sub == "Topwear":
+            target_subs = ["Bottomwear", "Shoes", "Watches", "Belts", "Eyewear"]
+        elif source_sub == "Bottomwear":
+            target_subs = ["Topwear", "Shoes", "Watches", "Belts"]
+        elif source_sub == "Shoes":
+            target_subs = ["Topwear", "Bottomwear", "Watches"]
+        elif source_sub == "Dress":
+            target_subs = ["Shoes", "Watches", "Jewellery", "Bags"]
+        elif source_sub == "Saree":
+            target_subs = ["Jewellery", "Bags", "Shoes"]
+        else:
+            # Fallback for accessories etc. -> match with Apparel
+            target_subs = ["Topwear", "Bottomwear", "Dress"]
+            
+        scored_matches = []
+        
+        # Neutral colors that match with everything
+        neutrals = ["Black", "White", "Grey", "Navy Blue", "Beige", "Silver", "Gold"]
+        
         for p in candidates:
+            # Strictly filter by target subcategories
+            # Allow Accessories and Footwear as generic fallback master categories if subCategory is niche
+            if p.get("subCategory") not in target_subs and p.get("masterCategory") not in ["Accessories", "Footwear"]:
+                 if p.get("subCategory") not in target_subs:
+                    continue
+                
             score = 0
-            # Category Match (High Priority)
-            if p.get("articleType") == source_product.get("articleType"):
-                score += 20
-            elif p.get("subCategory") == source_product.get("subCategory"):
+            
+            # Boost complementary category diversity
+            # (e.g. if we have a Top, a Bottom is worth more than a Watch)
+            if source_sub == "Topwear" and p.get("subCategory") == "Bottomwear":
+                score += 25
+            elif source_sub == "Bottomwear" and p.get("subCategory") == "Topwear":
+                score += 25
+            
+            # Context Match
+            if p.get("usage") == source_product.get("usage"):
                 score += 10
                 
-            # Color Match
-            if p.get("baseColour") == source_product.get("baseColour"):
-                score += 15
-                
-            # Usage/Season Match
-            if p.get("usage") == source_product.get("usage"):
+            # Strict Season Matching
+            # Only allow matching if seasons are compatible or one is 'All'/'Summer'/'Winter' compatible
+            s_season = source_product.get("season")
+            p_season = p.get("season")
+            
+            if s_season == p_season:
+                 score += 15 # Boost same season
+            elif s_season == "Summer" and p_season == "Winter":
+                 score -= 100 # Penalize Summer + Winter mismatch
+            elif s_season == "Winter" and p_season == "Summer":
+                 score -= 100 # Penalize Winter + Summer mismatch
+            
+            # Color Matching Logic
+            p_color = p.get("baseColour")
+            s_color = source_product.get("baseColour")
+            
+            # If source is neutral, almost anything matches
+            if s_color in neutrals:
                 score += 5
-            if p.get("season") == source_product.get("season"):
+            # If candidate is neutral, it likely matches source
+            if p_color in neutrals:
                 score += 5
                 
-            scored_similar.append((score, p))
-            
-        # Sort by score desc
-        scored_similar.sort(key=lambda x: x[0], reverse=True)
-        similar_items = [x[1] for x in scored_similar[:limit]]
-    
-    # --- 2. Find Matching Items (Outfit Completion) ---
-    # Strategy: Same Gender, Complementary Category, Compatible Color
-    
-    candidates = [p for p in products if p["id"] != product_id and p.get("gender") == source_product.get("gender")]
-    
-    source_sub = source_product.get("subCategory")
-    target_subs = []
-    
-    # Enforce strict complementary rules
-    if source_sub == "Topwear":
-        target_subs = ["Bottomwear", "Shoes", "Watches", "Belts", "Eyewear"]
-    elif source_sub == "Bottomwear":
-        target_subs = ["Topwear", "Shoes", "Watches", "Belts"]
-    elif source_sub == "Shoes":
-        target_subs = ["Topwear", "Bottomwear", "Watches"]
-    elif source_sub == "Dress":
-        target_subs = ["Shoes", "Watches", "Jewellery", "Bags"]
-    elif source_sub == "Saree":
-        target_subs = ["Jewellery", "Bags", "Shoes"]
-    else:
-        # Fallback for accessories etc. -> match with Apparel
-        target_subs = ["Topwear", "Bottomwear", "Dress"]
-        
-    scored_matches = []
-    
-    # Neutral colors that match with everything
-    neutrals = ["Black", "White", "Grey", "Navy Blue", "Beige", "Silver", "Gold"]
-    
-    for p in candidates:
-        # Strictly filter by target subcategories
-        if p.get("subCategory") not in target_subs and p.get("masterCategory") not in ["Accessories", "Footwear"]:
-             if p.get("subCategory") not in target_subs:
-                continue
-            
-        score = 0
-        
-        # Boost complementary category diversity
-        # (e.g. if we have a Top, a Bottom is worth more than a Watch)
-        if source_sub == "Topwear" and p.get("subCategory") == "Bottomwear":
-            score += 25
-        elif source_sub == "Bottomwear" and p.get("subCategory") == "Topwear":
-            score += 25
-        
-        # Context Match
-        if p.get("usage") == source_product.get("usage"):
-            score += 10
-            
-        # Strict Season Matching
-        # Only allow matching if seasons are compatible or one is 'All'/'Summer'/'Winter' compatible
-        s_season = source_product.get("season")
-        p_season = p.get("season")
-        
-        if s_season == p_season:
-             score += 15 # Boost same season
-        elif s_season == "Summer" and p_season == "Winter":
-             score -= 100 # Penalize Summer + Winter mismatch
-        elif s_season == "Winter" and p_season == "Summer":
-             score -= 100 # Penalize Winter + Summer mismatch
-        
-        # Color Matching Logic
-        p_color = p.get("baseColour")
-        s_color = source_product.get("baseColour")
-        
-        # If source is neutral, almost anything matches
-        if s_color in neutrals:
-            score += 5
-        # If candidate is neutral, it likely matches source
-        if p_color in neutrals:
-            score += 5
-            
-        # If both are same color (monochromatic look)
-        if p_color == s_color:
-            score += 3
-            
-        scored_matches.append((score, p))
-        
-    scored_matches.sort(key=lambda x: x[0], reverse=True)
-    
-    # Try to pick a mix of categories if possible (e.g. 1 Bottom, 1 Shoe, 1 Accessory)
-    matching_items = []
-    seen_subs = set()
-    
-    # First pass: try to get distinct subcategories (Prioritize Outfit Construction)
-    for score, p in scored_matches:
-        sub = p.get("subCategory")
-        if sub not in seen_subs:
-            matching_items.append(p)
-            seen_subs.add(sub)
-            
-    # Fill up the rest with high scoring items if needed
-    for score, p in scored_matches:
-        if len(matching_items) >= limit:
-            break
-        if p not in matching_items:
-            matching_items.append(p)
-            
-    matching_items = matching_items[:limit]
+            # If both are same color (monochromatic look)
+            if p_color == s_color:
+                score += 3
                 
-    return {
-        "source_product_id": product_id, 
-        "recommendations": similar_items,
-        "matching_items": matching_items
-    }
+            scored_matches.append((score, p))
+            
+        scored_matches.sort(key=lambda x: x[0], reverse=True)
+        
+        # Try to pick a mix of categories if possible (e.g. 1 Bottom, 1 Shoe, 1 Accessory)
+        matching_items = []
+        seen_subs = set()
+        
+        # First pass: try to get distinct subcategories (Prioritize Outfit Construction)
+        for score, p in scored_matches:
+            sub = p.get("subCategory")
+            if sub not in seen_subs:
+                matching_items.append(p)
+                seen_subs.add(sub)
+                
+        # Fill up the rest with high scoring items if needed
+        for score, p in scored_matches:
+            if len(matching_items) >= limit:
+                break
+            if p not in matching_items:
+                matching_items.append(p)
+                
+        matching_items = matching_items[:limit]
+                    
+        return {
+            "source_product_id": product_id, 
+            "recommendations": similar_items,
+            "matching_items": matching_items
+        }
+    except Exception as e:
+        print(f"❌ Critical Error in recommend_products: {e}")
+        # Return empty list instead of 500 to keep frontend alive
+        return {
+            "source_product_id": product_id, 
+            "recommendations": [],
+            "matching_items": []
+        }
 
 @app.get("/dashboard/stats")
 def get_dashboard_stats():

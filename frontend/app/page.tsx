@@ -228,11 +228,17 @@ export default function Home() {
       try {
           const rawUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
           const API_URL = rawUrl.trim()
+          console.log(`Getting recommendations for product ${product.id} from ${API_URL}...`)
+          
           const res = await axios.get(`${API_URL}/recommend/${product.id}`)
+          console.log("Recommendation Response:", res.data)
+          
           setRecommendations(res.data.recommendations || [])
           setMatchingItems(res.data.matching_items || [])
       } catch (error) {
           console.error("Recommendation failed", error)
+          setRecommendations([])
+          setMatchingItems([])
       } finally {
           setRecLoading(false)
       }
