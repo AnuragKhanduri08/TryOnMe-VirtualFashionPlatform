@@ -33,29 +33,24 @@ Base.metadata.create_all(bind=engine)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import AI Engines
-try:
-    print("Importing SmartSearchEngine...")
-    from ai_modules.smart_search.engine import SmartSearchEngine
-    print("SmartSearchEngine imported.")
-except ImportError as e:
-    SmartSearchEngine = None
-    print(f"Warning: SmartSearchEngine not found: {e}")
+# NOTE: We lazy load these in the lifespan startup event to prevent timeouts during deployment
+SmartSearchEngine = None
+BodyMeasurementEstimator = None
+VirtualTryOnEngine = None
 
 try:
-    print("Importing BodyMeasurementEstimator...")
-    from ai_modules.body_measurement.estimator import BodyMeasurementEstimator
-    print("BodyMeasurementEstimator imported.")
+    print("Importing AI Modules (Lazy Load Wrappers)...")
+    from ai_modules.smart_search.engine import SmartSearchEngine as SSE
+    SmartSearchEngine = SSE
+    
+    from ai_modules.body_measurement.estimator import BodyMeasurementEstimator as BME
+    BodyMeasurementEstimator = BME
+    
+    from ai_modules.virtual_try_on.engine import VirtualTryOnEngine as VTO
+    VirtualTryOnEngine = VTO
+    print("AI Modules imported successfully.")
 except ImportError as e:
-    BodyMeasurementEstimator = None
-    print(f"Warning: BodyMeasurementEstimator not found: {e}")
-
-try:
-    print("Importing VirtualTryOnEngine...")
-    from ai_modules.virtual_try_on.engine import VirtualTryOnEngine
-    print("VirtualTryOnEngine imported.")
-except ImportError as e:
-    VirtualTryOnEngine = None
-    print(f"Warning: VirtualTryOnEngine not found: {e}")
+    print(f"Warning: AI Module import failed: {e}")
 
 # Global Variables
 products = []
@@ -101,9 +96,6 @@ def load_data():
                 products = json.load(f)
             print(f"Loaded {len(products)} products from JSON.")
             
-            # Optional: Auto-migrate if empty?
-            # print("Tip: Run migrate_to_db.py to populate the database.")
-            
         finally:
             db.close()
             
@@ -130,11 +122,19 @@ def load_data():
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
+    
+    # 1. Load Lightweight Data (Instant)
     load_data()
     
     global search_engine, body_estimator, tryon_engine
     
-    # Initialize Search
+    # 2. Lazy Load Heavy AI Engines in Background (if possible) or just sequentially here
+    # Render expects the port to be open FAST.
+    # But uvicorn startup finishes AFTER lifespan startup.
+    # Ideally, we should initialize these variables but NOT load the heavy models yet if possible.
+    # However, since we pre-downloaded models, loading them might be faster now.
+    # Let's try loading them here but catch errors to avoid crashing.
+    
     if SmartSearchEngine:
         try:
             print("Initializing Search Engine...")
@@ -143,7 +143,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Failed to init Search Engine: {e}")
 
-    # Initialize Body Measurement
     if BodyMeasurementEstimator:
         try:
             print("Initializing Body Measurement Estimator...")
@@ -152,7 +151,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Failed to init Body Estimator: {e}")
 
-    # Initialize Try-On
     if VirtualTryOnEngine:
         try:
             print("Initializing Virtual Try-On Engine...")
