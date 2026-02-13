@@ -10,12 +10,12 @@ services:
       pip install -r requirements.txt
       # Pre-download models during build
       python download_models.py
+      # Generate embeddings during build (so startup is instant)
+      python setup_ai.py
     startCommand: |
       cd backend
       # Run data migration first (populate DB)
       python migrate_to_db.py
-      # Generate AI models (embeddings) - now fast because model is cached
-      python setup_ai.py
       # Start the app
       uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
