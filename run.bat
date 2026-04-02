@@ -32,7 +32,7 @@ goto menu
 :start_all
 echo.
 echo Starting Backend and Frontend...
-start "Backend Server" cmd /k "cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "Backend Server" cmd /k "cd backend && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 start "Frontend App" cmd /k "cd frontend && npm run dev"
 echo.
 echo Both services are starting in new windows.
@@ -44,35 +44,31 @@ goto exit
 echo.
 echo Installing Backend Dependencies...
 cd backend
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo Error installing backend dependencies.
     pause
     goto menu
 )
-cd ..
-
 echo.
 echo Installing Frontend Dependencies...
-cd frontend
-call npm install
+cd ../frontend
+npm install
 if %errorlevel% neq 0 (
     echo Error installing frontend dependencies.
     pause
     goto menu
 )
-cd ..
-
 echo.
-echo All dependencies installed successfully!
+echo Dependencies installed successfully.
 pause
 goto menu
 
 :start_backend
 echo.
-echo Starting Backend...
+echo Starting Backend Server...
 cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 pause
 goto menu
 

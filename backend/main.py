@@ -170,9 +170,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Middleware
+# Explicitly allow Vercel and Localhost origins to fix CORS issues with allow_credentials=True
+allowed_origins = [
+    "http://localhost:3000",
+    "https://try-on-me-virtual-fashion-platform.vercel.app",
+    "https://try-on-me-virtual-fashion-platform-git-main-anurag-khanduri-s-projects.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
